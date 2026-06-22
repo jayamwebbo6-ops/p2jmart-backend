@@ -35,6 +35,10 @@ app.use('/api/admin', adminRoutes);
 const userRoutes = require('./src/routes/userRoutes');
 app.use('/api/user', userRoutes);
 
+// Attribute Routes
+const attributeRoutes = require('./src/routes/attributeRoutes');
+app.use('/api/attributes', attributeRoutes);
+
 // Global Error Handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
