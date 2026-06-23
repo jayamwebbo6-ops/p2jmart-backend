@@ -47,6 +47,10 @@ app.use('/api/categories', categoryRoutes);
 const productRoutes = require('./src/routes/productRoutes');
 app.use('/api/products', productRoutes);
 
+// Admin Routes
+const gstRoutes = require('./src/routes/gstRoutes.js');
+app.use('/api/gst', gstRoutes);
+
 // Global Error Handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
