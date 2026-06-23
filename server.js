@@ -39,6 +39,14 @@ app.use('/api/user', userRoutes);
 const attributeRoutes = require('./src/routes/attributeRoutes');
 app.use('/api/attributes', attributeRoutes);
 
+// Category & Subcategory Routes
+const categoryRoutes = require('./src/routes/categoryRoutes');
+app.use('/api/categories', categoryRoutes);
+
+// Product Routes
+const productRoutes = require('./src/routes/productRoutes');
+app.use('/api/products', productRoutes);
+
 // Global Error Handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
