@@ -22,34 +22,44 @@ if (process.env.NODE_ENV !== 'production') {
   app.use(morgan('dev'));
 }
 
+// API Route Coordinator Router
+const apiRouter = express.Router( );
+
 // Basic health check route
-app.use('/test', (req, res) => {
+apiRouter.use('/test', (req, res) => {
   res.json({ message: 'P2J Mart API is running...' });
 });
 
+
+
 // Admin Routes
 const adminRoutes = require('./src/routes/adminRoutes');
-app.use('/api/admin', adminRoutes);
+apiRouter.use('/admin', adminRoutes);
 
 // User Routes
 const userRoutes = require('./src/routes/userRoutes');
-app.use('/api/user', userRoutes);
+apiRouter.use('/user', userRoutes);
 
 // Attribute Routes
 const attributeRoutes = require('./src/routes/attributeRoutes');
-app.use('/api/attributes', attributeRoutes);
+apiRouter.use('/attributes', attributeRoutes);
 
 // Category & Subcategory Routes
 const categoryRoutes = require('./src/routes/categoryRoutes');
-app.use('/api/categories', categoryRoutes);
+apiRouter.use('/categories', categoryRoutes);
 
 // Product Routes
 const productRoutes = require('./src/routes/productRoutes');
-app.use('/api/products', productRoutes);
+apiRouter.use('/products', productRoutes);
 
-// Admin Routes
+// GST Routes
 const gstRoutes = require('./src/routes/gstRoutes.js');
-app.use('/api/gst', gstRoutes);
+apiRouter.use('/gst', gstRoutes);
+
+// Mount the API Router under both prefixes (default /api and dynamic base URL from env)
+const BASE_URL = process.env.BASE_URL || 'p2jmart';
+app.use('/api', apiRouter);
+app.use(`/${BASE_URL}/api`, apiRouter);
 
 // Global Error Handler
 app.use((err, req, res, next) => {
