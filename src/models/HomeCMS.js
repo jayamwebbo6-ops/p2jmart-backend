@@ -23,6 +23,14 @@ const CategoryGridCardSchema = new mongoose.Schema({
   image: { type: String, default: '' }
 });
 
+const CategorySectionSchema = new mongoose.Schema({
+  categoryId: { type: String, default: '' },
+  title: { type: String, default: '' },
+  bannerImage: { type: String, default: '' },
+  bannerLink: { type: String, default: '' },
+  productIds: [{ type: String }]
+});
+
 const HomeCMSSchema = new mongoose.Schema({
   key: {
     type: String,
@@ -32,7 +40,8 @@ const HomeCMSSchema = new mongoose.Schema({
   },
   heroSlider: [HeroSlideSchema],
   offerBanners: [OfferBannerSchema],
-  categoryGrid: [CategoryGridCardSchema]
+  categoryGrid: [CategoryGridCardSchema],
+  categorySections: [CategorySectionSchema]
 }, {
   timestamps: true
 });

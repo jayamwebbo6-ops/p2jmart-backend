@@ -32,7 +32,8 @@ exports.getHomeCMS = async (req, res) => {
           { tagline: "iPhone Collection", title: "25% OFF", btnLink: "/category/iphone-cases", image: "" },
           { tagline: "MAC Computer", title: "25% OFF", btnLink: "/category/macbook-stands", image: "" }
         ],
-        categoryGrid: []
+        categoryGrid: [],
+        categorySections: []
       });
     }
 
@@ -52,12 +53,18 @@ exports.getHomeCMS = async (req, res) => {
       image: getImageUrl(card.image)
     }));
 
+    const formattedCategorySections = (config.categorySections || []).map(section => ({
+      ...section.toObject ? section.toObject() : section,
+      bannerImage: getImageUrl(section.bannerImage)
+    }));
+
     res.status(200).json({
       success: true,
       data: {
         heroSlider: formattedHero,
         offerBanners: formattedOffers,
-        categoryGrid: formattedCategoryGrid
+        categoryGrid: formattedCategoryGrid,
+        categorySections: formattedCategorySections
       }
     });
   } catch (err) {
@@ -71,7 +78,7 @@ exports.getHomeCMS = async (req, res) => {
 // 2. Update Home CMS Config
 exports.updateHomeCMS = async (req, res) => {
   try {
-    const { heroSlider, offerBanners, categoryGrid } = req.body;
+    const { heroSlider, offerBanners, categoryGrid, categorySections } = req.body;
 
     let config = await HomeCMS.findOne({ key: CONFIG_KEY });
     if (!config) {
@@ -82,6 +89,7 @@ exports.updateHomeCMS = async (req, res) => {
     const oldHeroImages = (config.heroSlider || []).map(s => s.image).filter(Boolean);
     const oldOfferImages = (config.offerBanners || []).map(b => b.image).filter(Boolean);
     const oldCategoryGridImages = (config.categoryGrid || []).map(c => c.image).filter(Boolean);
+    const oldCategorySectionImages = (config.categorySections || []).map(s => s.bannerImage).filter(Boolean);
 
     // Process Hero Slider images
     const processedHero = [];
@@ -154,15 +162,41 @@ exports.updateHomeCMS = async (req, res) => {
       }
     }
 
+    // Process Category Sections banner images
+    const processedCategorySections = [];
+    if (Array.isArray(categorySections)) {
+      for (let i = 0; i < categorySections.length; i++) {
+        const section = categorySections[i];
+        let savedBannerPath = '';
+        if (section.bannerImage) {
+          const cleanImage = getRelativeImagePath(section.bannerImage);
+          if (cleanImage.startsWith('data:image')) {
+            savedBannerPath = saveBase64Image(cleanImage, 'homes', `cat-section-banner-${i}`);
+          } else {
+            savedBannerPath = cleanImage;
+          }
+        }
+        processedCategorySections.push({
+          categoryId: section.categoryId || '',
+          title: section.title || '',
+          bannerImage: savedBannerPath,
+          bannerLink: section.bannerLink || '',
+          productIds: Array.isArray(section.productIds) ? section.productIds : []
+        });
+      }
+    }
+
     config.heroSlider = processedHero;
     config.offerBanners = processedOffers;
     config.categoryGrid = processedCategoryGrid;
+    config.categorySections = processedCategorySections;
     await config.save();
 
     // Clean up replaced images from server storage
     const newHeroImages = processedHero.map(s => s.image).filter(Boolean);
     const newOfferImages = processedOffers.map(b => b.image).filter(Boolean);
     const newCategoryGridImages = processedCategoryGrid.map(c => c.image).filter(Boolean);
+    const newCategorySectionImages = processedCategorySections.map(s => s.bannerImage).filter(Boolean);
 
     oldHeroImages.forEach(oldImg => {
       if (!newHeroImages.includes(oldImg)) {
@@ -178,6 +212,12 @@ exports.updateHomeCMS = async (req, res) => {
 
     oldCategoryGridImages.forEach(oldImg => {
       if (!newCategoryGridImages.includes(oldImg)) {
+        deleteImageFile(oldImg);
+      }
+    });
+
+    oldCategorySectionImages.forEach(oldImg => {
+      if (!newCategorySectionImages.includes(oldImg)) {
         deleteImageFile(oldImg);
       }
     });
@@ -198,13 +238,19 @@ exports.updateHomeCMS = async (req, res) => {
       image: getImageUrl(card.image)
     }));
 
+    const formattedCategorySections = config.categorySections.map(section => ({
+      ...section.toObject ? section.toObject() : section,
+      bannerImage: getImageUrl(section.bannerImage)
+    }));
+
     res.status(200).json({
       success: true,
       message: 'Home CMS configuration updated successfully',
       data: {
         heroSlider: formattedHero,
         offerBanners: formattedOffers,
-        categoryGrid: formattedCategoryGrid
+        categoryGrid: formattedCategoryGrid,
+        categorySections: formattedCategorySections
       }
     });
   } catch (err) {
