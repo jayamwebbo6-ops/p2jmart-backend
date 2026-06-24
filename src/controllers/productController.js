@@ -28,6 +28,19 @@ const formatProductResponse = (prod) => {
     images: (v.images || []).map(img => getImageUrl(img))
   }));
 
+  let derivedPrice = 0;
+  let derivedOriginalPrice = null;
+  let derivedDiscount = 0;
+
+  if (formattedVariants.length > 0) {
+    const firstVar = formattedVariants[0];
+    derivedPrice = Number(firstVar.price) || 0;
+    derivedOriginalPrice = firstVar.originalPrice ? Number(firstVar.originalPrice) : null;
+    if (derivedOriginalPrice && derivedPrice && derivedOriginalPrice > derivedPrice) {
+      derivedDiscount = Math.round(((derivedOriginalPrice - derivedPrice) / derivedOriginalPrice) * 100);
+    }
+  }
+
   return {
     ...prodObj,
     id: prodObj._id.toString(),
@@ -35,6 +48,9 @@ const formatProductResponse = (prod) => {
     collection: prodObj.collectionName || 'None',
     image: getImageUrl(prodObj.image),
     variants: formattedVariants,
+    price: derivedPrice,
+    originalPrice: derivedOriginalPrice,
+    discount: derivedDiscount,
     category: prodObj.category && prodObj.category._id 
       ? { id: prodObj.category._id.toString(), name: prodObj.category.name } 
       : prodObj.category,
@@ -47,10 +63,11 @@ const formatProductResponse = (prod) => {
 // 1. Get all products (with optional filtering and populating)
 exports.getProducts = async (req, res) => {
   try {
-    const { categoryId, subcategoryId } = req.query;
+    const { categoryId, subcategoryId, customizeProduct } = req.query;
     const filter = {};
     if (categoryId) filter.category = categoryId;
     if (subcategoryId) filter.subcategory = subcategoryId;
+    if (customizeProduct) filter.customizeProduct = customizeProduct;
 
     const products = await Product.find(filter)
       .populate('category', 'name')
@@ -112,9 +129,7 @@ exports.createProduct = async (req, res) => {
       warranty,
       returnPolicy,
       deliveryMode,
-      price,
-      originalPrice,
-      discount,
+
       rating,
       reviews,
       selectedAttributes,
@@ -127,24 +142,6 @@ exports.createProduct = async (req, res) => {
       categoryId,
       subcategoryId
     } = req.body;
-
-    if (!title || !price || !categoryId || !subcategoryId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Title, Price, Category, and Subcategory are required'
-      });
-    }
-
-    // Process main product image (if Base64 or existing relative path)
-    let savedMainImage = '';
-    if (image) {
-      const cleanImg = getRelativeImagePath(image);
-      if (cleanImg.startsWith('data:image')) {
-        savedMainImage = saveBase64Image(cleanImg, 'products', 'product');
-      } else {
-        savedMainImage = cleanImg;
-      }
-    }
 
     // Process variant images
     const processedVariants = (variants || []).map((v, idx) => {
@@ -186,6 +183,41 @@ exports.createProduct = async (req, res) => {
       };
     });
 
+    let priceNum = Number(price) || 0;
+    let originalPriceNum = originalPrice ? Number(originalPrice) : null;
+    let discountNum = Number(discount) || 0;
+
+    if (processedVariants.length > 0) {
+      const firstVar = processedVariants[0];
+      priceNum = Number(firstVar.price) || 0;
+      originalPriceNum = firstVar.originalPrice ? Number(firstVar.originalPrice) : null;
+      if (originalPriceNum && priceNum && originalPriceNum > priceNum) {
+        discountNum = Math.round(((originalPriceNum - priceNum) / originalPriceNum) * 100);
+      } else {
+        discountNum = 0;
+      }
+    }
+
+    if (!title || !priceNum || !categoryId || !subcategoryId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Title, Category, Subcategory, and at least one Variant (with Price) are required'
+      });
+    }
+
+    // Process main product image (if Base64 or existing relative path)
+    let savedMainImage = '';
+    if (image) {
+      const cleanImg = getRelativeImagePath(image);
+      if (cleanImg.startsWith('data:image')) {
+        savedMainImage = saveBase64Image(cleanImg, 'products', 'product');
+      } else {
+        savedMainImage = cleanImg;
+      }
+    } else if (processedVariants.length > 0) {
+      savedMainImage = processedVariants[0].image || (processedVariants[0].images && processedVariants[0].images.length > 0 ? processedVariants[0].images[0] : '');
+    }
+
     const product = await Product.create({
       title,
       description,
@@ -196,9 +228,6 @@ exports.createProduct = async (req, res) => {
       warranty,
       returnPolicy: returnPolicy || 'Select Return Days',
       deliveryMode,
-      price: Number(price),
-      originalPrice: originalPrice ? Number(originalPrice) : null,
-      discount: Number(discount) || 0,
       rating: Number(rating) || 5,
       reviews: Number(reviews) || 0,
       selectedAttributes: selectedAttributes || {},
@@ -238,9 +267,7 @@ exports.updateProduct = async (req, res) => {
       warranty,
       returnPolicy,
       deliveryMode,
-      price,
-      originalPrice,
-      discount,
+     
       rating,
       reviews,
       selectedAttributes,
@@ -368,13 +395,18 @@ exports.updateProduct = async (req, res) => {
     product.warranty = warranty !== undefined ? warranty : product.warranty;
     product.returnPolicy = returnPolicy || product.returnPolicy;
     product.deliveryMode = deliveryMode !== undefined ? deliveryMode : product.deliveryMode;
-    product.price = price !== undefined ? Number(price) : product.price;
-    product.originalPrice = originalPrice !== undefined ? (originalPrice ? Number(originalPrice) : null) : product.originalPrice;
-    product.discount = discount !== undefined ? Number(discount) : product.discount;
+
+
+
     product.rating = rating !== undefined ? Number(rating) : product.rating;
     product.reviews = reviews !== undefined ? Number(reviews) : product.reviews;
     product.selectedAttributes = selectedAttributes || product.selectedAttributes;
     product.variants = processedVariants;
+
+    // Apply main image fallback if it's currently empty
+    if (!product.image && processedVariants.length > 0) {
+      product.image = processedVariants[0].image || (processedVariants[0].images && processedVariants[0].images.length > 0 ? processedVariants[0].images[0] : '');
+    }
     product.metaTitle = metaTitle !== undefined ? metaTitle : product.metaTitle;
     product.keywords = keywords !== undefined ? keywords : product.keywords;
     product.seoDescription = seoDescription !== undefined ? seoDescription : product.seoDescription;

@@ -1,0 +1,170 @@
+const HomeCMS = require('../models/HomeCMS');
+const { saveBase64Image, deleteImageFile, getImageUrl } = require('../utils/imageHelper');
+
+const CONFIG_KEY = 'home_cms_config';
+
+// Helper to strip BASE_URL from image path when saving
+const getRelativeImagePath = (urlOrPath) => {
+  if (!urlOrPath) return '';
+  if (urlOrPath.startsWith('data:image')) {
+    return urlOrPath;
+  }
+  const uploadsIndex = urlOrPath.indexOf('uploads/');
+  if (uploadsIndex !== -1) {
+    return urlOrPath.substring(uploadsIndex);
+  }
+  return urlOrPath;
+};
+
+// 1. Get Home CMS Config
+exports.getHomeCMS = async (req, res) => {
+  try {
+    let config = await HomeCMS.findOne({ key: CONFIG_KEY });
+    if (!config) {
+      // Create a default initial document matching original mock values
+      config = await HomeCMS.create({
+        key: CONFIG_KEY,
+        heroSlider: [
+          { title: "Boat Headphone", description: "Taking your Viewing Experience to Next Level", btnLabel: "Shop Now", btnLink: "/category/headphones", image: "" },
+          { title: "SNAP ART Spotify Frame", description: "Personalized scannable frame tokens with live musical elements", btnLabel: "Customize Now", btnLink: "/product/custom-spotify-frame", image: "" }
+        ],
+        offerBanners: [
+          { tagline: "iPhone Collection", title: "25% OFF", btnLink: "/category/iphone-cases", image: "" },
+          { tagline: "MAC Computer", title: "25% OFF", btnLink: "/category/macbook-stands", image: "" }
+        ]
+      });
+    }
+
+    // Map response to include full image URLs
+    const formattedHero = (config.heroSlider || []).map(slide => ({
+      ...slide.toObject ? slide.toObject() : slide,
+      image: getImageUrl(slide.image)
+    }));
+
+    const formattedOffers = (config.offerBanners || []).map(banner => ({
+      ...banner.toObject ? banner.toObject() : banner,
+      image: getImageUrl(banner.image)
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: {
+        heroSlider: formattedHero,
+        offerBanners: formattedOffers
+      }
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message || 'Error fetching Home CMS configuration'
+    });
+  }
+};
+
+// 2. Update Home CMS Config
+exports.updateHomeCMS = async (req, res) => {
+  try {
+    const { heroSlider, offerBanners } = req.body;
+
+    let config = await HomeCMS.findOne({ key: CONFIG_KEY });
+    if (!config) {
+      config = new HomeCMS({ key: CONFIG_KEY });
+    }
+
+    // Keep copies of old images to delete later if they are replaced or removed
+    const oldHeroImages = (config.heroSlider || []).map(s => s.image).filter(Boolean);
+    const oldOfferImages = (config.offerBanners || []).map(b => b.image).filter(Boolean);
+
+    // Process Hero Slider images
+    const processedHero = [];
+    if (Array.isArray(heroSlider)) {
+      for (let i = 0; i < heroSlider.length; i++) {
+        const slide = heroSlider[i];
+        let savedPath = '';
+        if (slide.image) {
+          const cleanImage = getRelativeImagePath(slide.image);
+          if (cleanImage.startsWith('data:image')) {
+            savedPath = saveBase64Image(cleanImage, 'homes', `hero-slide-${i}`);
+          } else {
+            savedPath = cleanImage;
+          }
+        }
+        processedHero.push({
+          title: slide.title || '',
+          description: slide.description || '',
+          btnLabel: slide.btnLabel || '',
+          btnLink: slide.btnLink || '',
+          image: savedPath
+        });
+      }
+    }
+
+    // Process Offer Banners images
+    const processedOffers = [];
+    if (Array.isArray(offerBanners)) {
+      for (let i = 0; i < offerBanners.length; i++) {
+        const banner = offerBanners[i];
+        let savedPath = '';
+        if (banner.image) {
+          const cleanImage = getRelativeImagePath(banner.image);
+          if (cleanImage.startsWith('data:image')) {
+            savedPath = saveBase64Image(cleanImage, 'homes', `offer-banner-${i}`);
+          } else {
+            savedPath = cleanImage;
+          }
+        }
+        processedOffers.push({
+          tagline: banner.tagline || '',
+          title: banner.title || '',
+          btnLink: banner.btnLink || '',
+          image: savedPath
+        });
+      }
+    }
+
+    config.heroSlider = processedHero;
+    config.offerBanners = processedOffers;
+    await config.save();
+
+    // Clean up replaced images from server storage
+    const newHeroImages = processedHero.map(s => s.image).filter(Boolean);
+    const newOfferImages = processedOffers.map(b => b.image).filter(Boolean);
+
+    oldHeroImages.forEach(oldImg => {
+      if (!newHeroImages.includes(oldImg)) {
+        deleteImageFile(oldImg);
+      }
+    });
+
+    oldOfferImages.forEach(oldImg => {
+      if (!newOfferImages.includes(oldImg)) {
+        deleteImageFile(oldImg);
+      }
+    });
+
+    // Return updated formatting
+    const formattedHero = config.heroSlider.map(slide => ({
+      ...slide.toObject ? slide.toObject() : slide,
+      image: getImageUrl(slide.image)
+    }));
+
+    const formattedOffers = config.offerBanners.map(banner => ({
+      ...banner.toObject ? banner.toObject() : banner,
+      image: getImageUrl(banner.image)
+    }));
+
+    res.status(200).json({
+      success: true,
+      message: 'Home CMS configuration updated successfully',
+      data: {
+        heroSlider: formattedHero,
+        offerBanners: formattedOffers
+      }
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message || 'Error updating Home CMS configuration'
+    });
+  }
+};

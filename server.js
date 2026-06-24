@@ -52,6 +52,10 @@ apiRouter.use('/categories', categoryRoutes);
 const productRoutes = require('./src/routes/productRoutes');
 apiRouter.use('/products', productRoutes);
 
+// Home CMS Routes
+const homeCMSRoutes = require('./src/routes/homeCMSRoutes');
+apiRouter.use('/home-cms', homeCMSRoutes);
+
 // GST Routes
 const gstRoutes = require('./src/routes/gstRoutes.js');
 apiRouter.use('/gst', gstRoutes);
