@@ -33,7 +33,10 @@ exports.getHomeCMS = async (req, res) => {
           { tagline: "MAC Computer", title: "25% OFF", btnLink: "/category/macbook-stands", image: "" }
         ],
         categoryGrid: [],
-        categorySections: []
+        categorySections: [],
+        featuredProducts: [],
+        trendingProducts: [],
+        exclusiveProducts: []
       });
     }
 
@@ -64,7 +67,10 @@ exports.getHomeCMS = async (req, res) => {
         heroSlider: formattedHero,
         offerBanners: formattedOffers,
         categoryGrid: formattedCategoryGrid,
-        categorySections: formattedCategorySections
+        categorySections: formattedCategorySections,
+        featuredProducts: config.featuredProducts || [],
+        trendingProducts: config.trendingProducts || [],
+        exclusiveProducts: config.exclusiveProducts || []
       }
     });
   } catch (err) {
@@ -78,7 +84,7 @@ exports.getHomeCMS = async (req, res) => {
 // 2. Update Home CMS Config
 exports.updateHomeCMS = async (req, res) => {
   try {
-    const { heroSlider, offerBanners, categoryGrid, categorySections } = req.body;
+    const { heroSlider, offerBanners, categoryGrid, categorySections, featuredProducts, trendingProducts, exclusiveProducts } = req.body;
 
     let config = await HomeCMS.findOne({ key: CONFIG_KEY });
     if (!config) {
@@ -190,6 +196,9 @@ exports.updateHomeCMS = async (req, res) => {
     config.offerBanners = processedOffers;
     config.categoryGrid = processedCategoryGrid;
     config.categorySections = processedCategorySections;
+    config.featuredProducts = Array.isArray(featuredProducts) ? featuredProducts : [];
+    config.trendingProducts = Array.isArray(trendingProducts) ? trendingProducts : [];
+    config.exclusiveProducts = Array.isArray(exclusiveProducts) ? exclusiveProducts : [];
     await config.save();
 
     // Clean up replaced images from server storage
@@ -250,7 +259,10 @@ exports.updateHomeCMS = async (req, res) => {
         heroSlider: formattedHero,
         offerBanners: formattedOffers,
         categoryGrid: formattedCategoryGrid,
-        categorySections: formattedCategorySections
+        categorySections: formattedCategorySections,
+        featuredProducts: config.featuredProducts || [],
+        trendingProducts: config.trendingProducts || [],
+        exclusiveProducts: config.exclusiveProducts || []
       }
     });
   } catch (err) {

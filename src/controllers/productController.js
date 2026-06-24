@@ -129,7 +129,9 @@ exports.createProduct = async (req, res) => {
       warranty,
       returnPolicy,
       deliveryMode,
-
+      price,
+      originalPrice,
+      discount,
       rating,
       reviews,
       selectedAttributes,

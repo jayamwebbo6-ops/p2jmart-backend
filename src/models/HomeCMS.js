@@ -41,7 +41,10 @@ const HomeCMSSchema = new mongoose.Schema({
   heroSlider: [HeroSlideSchema],
   offerBanners: [OfferBannerSchema],
   categoryGrid: [CategoryGridCardSchema],
-  categorySections: [CategorySectionSchema]
+  categorySections: [CategorySectionSchema],
+  featuredProducts: [{ type: String }],
+  trendingProducts: [{ type: String }],
+  exclusiveProducts: [{ type: String }]
 }, {
   timestamps: true
 });
