@@ -38,18 +38,6 @@ const ProductSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
-  price: {
-    type: Number,
-    required: true
-  },
-  originalPrice: {
-    type: Number,
-    default: null
-  },
-  discount: {
-    type: Number,
-    default: 0
-  },
   rating: {
     type: Number,
     default: 5
