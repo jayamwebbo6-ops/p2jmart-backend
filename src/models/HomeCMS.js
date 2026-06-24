@@ -15,6 +15,14 @@ const OfferBannerSchema = new mongoose.Schema({
   image: { type: String, default: '' }
 });
 
+const CategoryGridCardSchema = new mongoose.Schema({
+  title: { type: String, default: '' },
+  description: { type: String, default: '' },
+  buttonText: { type: String, default: 'View Collection' },
+  targetUrl: { type: String, default: '' },
+  image: { type: String, default: '' }
+});
+
 const HomeCMSSchema = new mongoose.Schema({
   key: {
     type: String,
@@ -23,7 +31,8 @@ const HomeCMSSchema = new mongoose.Schema({
     default: 'home_cms_config'
   },
   heroSlider: [HeroSlideSchema],
-  offerBanners: [OfferBannerSchema]
+  offerBanners: [OfferBannerSchema],
+  categoryGrid: [CategoryGridCardSchema]
 }, {
   timestamps: true
 });
