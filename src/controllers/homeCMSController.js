@@ -31,7 +31,8 @@ exports.getHomeCMS = async (req, res) => {
         offerBanners: [
           { tagline: "iPhone Collection", title: "25% OFF", btnLink: "/category/iphone-cases", image: "" },
           { tagline: "MAC Computer", title: "25% OFF", btnLink: "/category/macbook-stands", image: "" }
-        ]
+        ],
+        categoryGrid: []
       });
     }
 
@@ -46,11 +47,17 @@ exports.getHomeCMS = async (req, res) => {
       image: getImageUrl(banner.image)
     }));
 
+    const formattedCategoryGrid = (config.categoryGrid || []).map(card => ({
+      ...card.toObject ? card.toObject() : card,
+      image: getImageUrl(card.image)
+    }));
+
     res.status(200).json({
       success: true,
       data: {
         heroSlider: formattedHero,
-        offerBanners: formattedOffers
+        offerBanners: formattedOffers,
+        categoryGrid: formattedCategoryGrid
       }
     });
   } catch (err) {
@@ -64,7 +71,7 @@ exports.getHomeCMS = async (req, res) => {
 // 2. Update Home CMS Config
 exports.updateHomeCMS = async (req, res) => {
   try {
-    const { heroSlider, offerBanners } = req.body;
+    const { heroSlider, offerBanners, categoryGrid } = req.body;
 
     let config = await HomeCMS.findOne({ key: CONFIG_KEY });
     if (!config) {
@@ -74,6 +81,7 @@ exports.updateHomeCMS = async (req, res) => {
     // Keep copies of old images to delete later if they are replaced or removed
     const oldHeroImages = (config.heroSlider || []).map(s => s.image).filter(Boolean);
     const oldOfferImages = (config.offerBanners || []).map(b => b.image).filter(Boolean);
+    const oldCategoryGridImages = (config.categoryGrid || []).map(c => c.image).filter(Boolean);
 
     // Process Hero Slider images
     const processedHero = [];
@@ -122,13 +130,39 @@ exports.updateHomeCMS = async (req, res) => {
       }
     }
 
+    // Process Category Grid images
+    const processedCategoryGrid = [];
+    if (Array.isArray(categoryGrid)) {
+      for (let i = 0; i < categoryGrid.length; i++) {
+        const card = categoryGrid[i];
+        let savedPath = '';
+        if (card.image) {
+          const cleanImage = getRelativeImagePath(card.image);
+          if (cleanImage.startsWith('data:image')) {
+            savedPath = saveBase64Image(cleanImage, 'homes', `category-grid-${i}`);
+          } else {
+            savedPath = cleanImage;
+          }
+        }
+        processedCategoryGrid.push({
+          title: card.title || '',
+          description: card.description || '',
+          buttonText: card.buttonText || 'View Collection',
+          targetUrl: card.targetUrl || '',
+          image: savedPath
+        });
+      }
+    }
+
     config.heroSlider = processedHero;
     config.offerBanners = processedOffers;
+    config.categoryGrid = processedCategoryGrid;
     await config.save();
 
     // Clean up replaced images from server storage
     const newHeroImages = processedHero.map(s => s.image).filter(Boolean);
     const newOfferImages = processedOffers.map(b => b.image).filter(Boolean);
+    const newCategoryGridImages = processedCategoryGrid.map(c => c.image).filter(Boolean);
 
     oldHeroImages.forEach(oldImg => {
       if (!newHeroImages.includes(oldImg)) {
@@ -138,6 +172,12 @@ exports.updateHomeCMS = async (req, res) => {
 
     oldOfferImages.forEach(oldImg => {
       if (!newOfferImages.includes(oldImg)) {
+        deleteImageFile(oldImg);
+      }
+    });
+
+    oldCategoryGridImages.forEach(oldImg => {
+      if (!newCategoryGridImages.includes(oldImg)) {
         deleteImageFile(oldImg);
       }
     });
@@ -153,12 +193,18 @@ exports.updateHomeCMS = async (req, res) => {
       image: getImageUrl(banner.image)
     }));
 
+    const formattedCategoryGrid = config.categoryGrid.map(card => ({
+      ...card.toObject ? card.toObject() : card,
+      image: getImageUrl(card.image)
+    }));
+
     res.status(200).json({
       success: true,
       message: 'Home CMS configuration updated successfully',
       data: {
         heroSlider: formattedHero,
-        offerBanners: formattedOffers
+        offerBanners: formattedOffers,
+        categoryGrid: formattedCategoryGrid
       }
     });
   } catch (err) {
