@@ -269,6 +269,9 @@ exports.updateProduct = async (req, res) => {
       warranty,
       returnPolicy,
       deliveryMode,
+       price,
+      originalPrice,
+      discount,
      
       rating,
       reviews,

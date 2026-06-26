@@ -36,7 +36,155 @@ exports.getHomeCMS = async (req, res) => {
         categorySections: [],
         featuredProducts: [],
         trendingProducts: [],
-        exclusiveProducts: []
+        exclusiveProducts: [],
+        
+        contactSetting: {
+          phones: '+91 925537662, 936675427',
+          email: 'p2gmart@gmail.com',
+          address: 'Plot No 1, 3rd Street, tambaram, Urapakkam, Chennai - 603 210',
+          facebook: '#',
+          twitter: '#',
+          instagram: '#',
+          youtube: '#'
+        },
+
+        privacyPolicy: [
+          {
+            title: "1. Information We Collect",
+            points: [
+              "Personal Data: Name, email, shipping/billing address, phone number, and payment details.",
+              "Automated Data: Cookies, IP address, browser type, and browsing behavior for analytics.",
+              "Order Details: Purchase history, preferences, and interactions with customer support."
+            ]
+          },
+          {
+            title: "2. How We Use Your Information",
+            points: [
+              "Process and fulfill your orders.",
+              "Improve our website, products, and services.",
+              "Send transactional emails (order confirmations, shipping updates).",
+              "Provide personalized offers (with your consent).",
+              "Comply with legal obligations."
+            ]
+          },
+          {
+            title: "3. Data Sharing & Protection",
+            points: [
+              "We never sell your data to third parties.",
+              "Trusted partners (payment processors, shipping carriers) only receive necessary information.",
+              "Data is secured via encryption (SSL) and industry-standard safeguards."
+            ]
+          },
+          {
+            title: "4. Your Rights",
+            points: [
+              "Access, correct, or delete your personal data.",
+              "Opt out of marketing emails (unsubscribe link in every email).",
+              "Disable cookies via browser settings (may affect site functionality)."
+            ]
+          },
+          {
+            title: "5. Policy Updates",
+            points: [
+              "We may update this policy periodically. Changes will be posted here with the effective date.",
+              "Last Updated: 17/6/2024",
+              "Contact Us: For privacy-related questions, email [privacy@p2j-mart.gmail.com]."
+            ]
+          }
+        ],
+
+        cancellationReturnPolicy: [
+          {
+            title: "1. Return Conditions",
+            points: [
+              "Eligibility: We accept returns within 30 days of delivery for standard items.",
+              "Condition: The item must be unused, in its original packaging, and in the same condition as when you received it.",
+              "Customized Products: Products with custom embroidery, printing, or designs cannot be returned unless there is a manufacturing defect or printing error on our part.",
+              "Proof of Purchase: A receipt, order confirmation email, or invoice is required to process any return request."
+            ]
+          },
+          {
+            title: "2. Cancellation Terms",
+            points: [
+              "Standard orders can be cancelled within 24 hours of purchase for a full refund.",
+              "Customized or personalized print production batches cannot be cancelled once manufacturing or embroidery setups have begun.",
+              "To cancel an order, contact user support immediately with your order reference ID number."
+            ]
+          },
+          {
+            title: "3. Refund Execution Methods",
+            points: [
+              "Once your return package is inspected and approved, a refund will be initialized automatically.",
+              "Refund transactions are issued back to the original method of payment (bank gateway, credit card, etc.).",
+              "Please allow 5 to 7 business days for the credit adjustments to reflect on your statement."
+            ]
+          }
+        ],
+
+        deliveryPolicy: [
+          {
+            title: "1. Shipping Options & Costs",
+            points: [
+              "Standard Shipping: Delivery within standard business days configured at checkout.",
+              "Express Shipping: Expedited courier transit options available for urgent distributions.",
+              "International Shipping: Shipping fees are auto-calculated at checkout based on package weights and geographic destinations."
+            ]
+          },
+          {
+            title: "2. Processing Time",
+            points: [
+              "Orders are processed within scheduled business days (excluding weekends and official public holidays).",
+              "You will receive a automated confirmation message with full carrier tracking numbers once package hands off."
+            ]
+          },
+          {
+            title: "3. Undeliverable Orders",
+            points: [
+              "If packages route back due to incorrect address information, customer support will reach out to schedule secondary shipping arrangements."
+            ]
+          }
+        ],
+
+        termsConditions: [
+          {
+            title: "1. Information We Collect",
+            points: [
+              "Personal Data: We collect personally identifiable information, such as your name, shipping address, email address, and phone number, when you voluntarily register or make a purchase.",
+              "Payment Data: Financial information related to your payment method (such as credit card details or digital wallet data) is securely processed by our third-party payment gateways.",
+              "Automated Data: When you visit our website, our servers automatically log standard tracking data like your IP address, browser type, and operating system details to optimize performance."
+            ]
+          },
+          {
+            title: "2. How We Use Your Information",
+            points: [
+              "Order Fulfillment: To process and deliver your purchases, manage product order confirmations, and track logistical updates efficiently.",
+              "Customer Experience: To resolve support requests, troubleshoot service errors, and improve website navigation interfaces based on user behavior metrics.",
+              "Communications: To send transactional notifications, operational account updates, or promotional marketing newsletters (which you can opt-out of at any time)."
+            ]
+          },
+          {
+            title: "3. Data Sharing & Disclosure",
+            points: [
+              "Third-Party Service Providers: We share necessary data with trusted third parties who perform operational services on our behalf, including secure payment processors and shipping couriers.",
+              "Legal Requirements: We may disclose your information if required to do so by applicable law, governmental mandates, or valid judicial court subpoenas."
+            ]
+          },
+          {
+            title: "4. Data Security & Storage",
+            points: [
+              "Protection Standards: We implement administrative, technical, and physical security measures designed to protect your personal information from unauthorized access, modification, or exposure.",
+              "Risk Acknowledgment: While we take proactive industry-standard steps to secure your data, no method of transmission over the internet can guarantee absolute vulnerability protection."
+            ]
+          },
+          {
+            title: "5. Contact & Support",
+            points: [
+              "Email: vivaadhgroup@gmail.com",
+              "Phone: 9361726968",
+              "Address: 25, Vembuliamman koil street, West K.K. Nagar, Chennai 78"
+            ]
+          }
+        ]
       });
     }
 
@@ -70,7 +218,12 @@ exports.getHomeCMS = async (req, res) => {
         categorySections: formattedCategorySections,
         featuredProducts: config.featuredProducts || [],
         trendingProducts: config.trendingProducts || [],
-        exclusiveProducts: config.exclusiveProducts || []
+        exclusiveProducts: config.exclusiveProducts || [],
+        contactSetting: config.contactSetting || {},
+        privacyPolicy: config.privacyPolicy || [],
+        cancellationReturnPolicy: config.cancellationReturnPolicy || [],
+        deliveryPolicy: config.deliveryPolicy || [],
+        termsConditions: config.termsConditions || []
       }
     });
   } catch (err) {
@@ -84,7 +237,20 @@ exports.getHomeCMS = async (req, res) => {
 // 2. Update Home CMS Config
 exports.updateHomeCMS = async (req, res) => {
   try {
-    const { heroSlider, offerBanners, categoryGrid, categorySections, featuredProducts, trendingProducts, exclusiveProducts } = req.body;
+    const { 
+      heroSlider, 
+      offerBanners, 
+      categoryGrid, 
+      categorySections, 
+      featuredProducts, 
+      trendingProducts, 
+      exclusiveProducts,
+      contactSetting,
+      privacyPolicy,
+      cancellationReturnPolicy,
+      deliveryPolicy,
+      termsConditions
+    } = req.body;
 
     let config = await HomeCMS.findOne({ key: CONFIG_KEY });
     if (!config) {
@@ -199,6 +365,48 @@ exports.updateHomeCMS = async (req, res) => {
     config.featuredProducts = Array.isArray(featuredProducts) ? featuredProducts : [];
     config.trendingProducts = Array.isArray(trendingProducts) ? trendingProducts : [];
     config.exclusiveProducts = Array.isArray(exclusiveProducts) ? exclusiveProducts : [];
+
+    // Save dynamic settings and policies if provided
+    if (contactSetting) {
+      config.contactSetting = {
+        phones: contactSetting.phones || '',
+        email: contactSetting.email || '',
+        address: contactSetting.address || '',
+        facebook: contactSetting.facebook || '',
+        twitter: contactSetting.twitter || '',
+        instagram: contactSetting.instagram || '',
+        youtube: contactSetting.youtube || ''
+      };
+    }
+
+    if (Array.isArray(privacyPolicy)) {
+      config.privacyPolicy = privacyPolicy.map(sec => ({
+        title: sec.title || '',
+        points: Array.isArray(sec.points) ? sec.points : []
+      }));
+    }
+
+    if (Array.isArray(cancellationReturnPolicy)) {
+      config.cancellationReturnPolicy = cancellationReturnPolicy.map(sec => ({
+        title: sec.title || '',
+        points: Array.isArray(sec.points) ? sec.points : []
+      }));
+    }
+
+    if (Array.isArray(deliveryPolicy)) {
+      config.deliveryPolicy = deliveryPolicy.map(sec => ({
+        title: sec.title || '',
+        points: Array.isArray(sec.points) ? sec.points : []
+      }));
+    }
+
+    if (Array.isArray(termsConditions)) {
+      config.termsConditions = termsConditions.map(sec => ({
+        title: sec.title || '',
+        points: Array.isArray(sec.points) ? sec.points : []
+      }));
+    }
+
     await config.save();
 
     // Clean up replaced images from server storage
@@ -262,7 +470,12 @@ exports.updateHomeCMS = async (req, res) => {
         categorySections: formattedCategorySections,
         featuredProducts: config.featuredProducts || [],
         trendingProducts: config.trendingProducts || [],
-        exclusiveProducts: config.exclusiveProducts || []
+        exclusiveProducts: config.exclusiveProducts || [],
+        contactSetting: config.contactSetting || {},
+        privacyPolicy: config.privacyPolicy || [],
+        cancellationReturnPolicy: config.cancellationReturnPolicy || [],
+        deliveryPolicy: config.deliveryPolicy || [],
+        termsConditions: config.termsConditions || []
       }
     });
   } catch (err) {

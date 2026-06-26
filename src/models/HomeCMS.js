@@ -31,6 +31,21 @@ const CategorySectionSchema = new mongoose.Schema({
   productIds: [{ type: String }]
 });
 
+const ContactSettingSchema = new mongoose.Schema({
+  phones: { type: String, default: '+91 925537662, 936675427' },
+  email: { type: String, default: 'p2gmart@gmail.com' },
+  address: { type: String, default: 'Plot No 1, 3rd Street, tambaram, Urapakkam, Chennai - 603 210' },
+  facebook: { type: String, default: '#' },
+  twitter: { type: String, default: '#' },
+  instagram: { type: String, default: '#' },
+  youtube: { type: String, default: '#' }
+});
+
+const PolicySectionSchema = new mongoose.Schema({
+  title: { type: String, default: '' },
+  points: [{ type: String }]
+});
+
 const HomeCMSSchema = new mongoose.Schema({
   key: {
     type: String,
@@ -44,7 +59,19 @@ const HomeCMSSchema = new mongoose.Schema({
   categorySections: [CategorySectionSchema],
   featuredProducts: [{ type: String }],
   trendingProducts: [{ type: String }],
-  exclusiveProducts: [{ type: String }]
+  exclusiveProducts: [{ type: String }],
+  
+  // Contact & Social settings
+  contactSetting: {
+    type: ContactSettingSchema,
+    default: () => ({})
+  },
+  
+  // Static Page Policies
+  privacyPolicy: [PolicySectionSchema],
+  cancellationReturnPolicy: [PolicySectionSchema],
+  deliveryPolicy: [PolicySectionSchema],
+  termsConditions: [PolicySectionSchema]
 }, {
   timestamps: true
 });

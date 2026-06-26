@@ -53,7 +53,7 @@ const getImageUrl = (photoPath) => {
   if (photoPath.startsWith('http://') || photoPath.startsWith('https://') || photoPath.startsWith('data:image')) {
     return photoPath;
   }
-  const baseUrl = process.env.BACKEND_URL || 'http://localhost:5000';
+  const baseUrl = process.env.BACKEND_URL;
   const cleanBase = baseUrl.replace(/\/+$/, '');
   const cleanPath = photoPath.replace(/^\/+/, '');
   return `${cleanBase}/${cleanPath}`;
