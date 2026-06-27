@@ -1,5 +1,5 @@
 const Wishlist = require("../models/Wishlist");
-
+const { formatProductResponse } = require("./productController");
 
 // Get Wishlist
 exports.getWishlist = async (req, res) => {
@@ -12,12 +12,15 @@ exports.getWishlist = async (req, res) => {
       return res.status(200).json([]);
     }
 
-    res.status(200).json(wishlist.products);
+    const formatted = wishlist.products
+      .map(p => formatProductResponse(p))
+      .filter(Boolean);
+
+    res.status(200).json(formatted);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
-
 
 // Add Product
 exports.addToWishlist = async (req, res) => {
@@ -42,12 +45,15 @@ exports.addToWishlist = async (req, res) => {
 
     await wishlist.populate("products");
 
-    res.status(200).json(wishlist.products);
+    const formatted = wishlist.products
+      .map(p => formatProductResponse(p))
+      .filter(Boolean);
+
+    res.status(200).json(formatted);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
-
 
 // Remove Product
 exports.removeFromWishlist = async (req, res) => {
@@ -72,12 +78,15 @@ exports.removeFromWishlist = async (req, res) => {
 
     await wishlist.populate("products");
 
-    res.status(200).json(wishlist.products);
+    const formatted = wishlist.products
+      .map(p => formatProductResponse(p))
+      .filter(Boolean);
+
+    res.status(200).json(formatted);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
-
 
 // Clear Wishlist
 exports.clearWishlist = async (req, res) => {

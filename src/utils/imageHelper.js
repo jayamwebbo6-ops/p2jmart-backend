@@ -75,8 +75,73 @@ const deleteImageFile = (relativePath) => {
   }
 };
 
+/**
+ * Resolves a product or cart item image path, checking if the file actually exists on disk.
+ * If the file doesn't exist, it falls back to the first variant's image that does exist.
+ * If no valid variant image exists, it falls back to a default placeholder URL.
+ * @param {string} imagePath - Stored image path.
+ * @param {Object} product - Product object/document containing variants.
+ * @returns {string} - A valid relative image path or URL.
+ */
+const getValidProductImage = (imagePath, product = null) => {
+  if (!imagePath) {
+    if (product) {
+      const fallback = getFirstValidVariantImage(product);
+      if (fallback) return fallback;
+    }
+    return 'https://via.placeholder.com/500?text=No+Image+Available';
+  }
+
+  if (imagePath.startsWith('http://') || imagePath.startsWith('https://') || imagePath.startsWith('data:image')) {
+    return imagePath;
+  }
+
+  // Check if file exists on disk
+  const fullPath = path.join(__dirname, '../../', imagePath);
+  if (fs.existsSync(fullPath)) {
+    return imagePath;
+  }
+
+  // File doesn't exist, try to find a variant image from product
+  if (product) {
+    const fallback = getFirstValidVariantImage(product);
+    if (fallback) return fallback;
+  }
+
+  // If no fallback works, return a placeholder
+  return 'https://via.placeholder.com/500?text=No+Image+Available';
+};
+
+const getFirstValidVariantImage = (product) => {
+  if (!product || !product.variants || !Array.isArray(product.variants)) {
+    return null;
+  }
+  for (const variant of product.variants) {
+    // Check variant.image
+    if (variant.image && typeof variant.image === 'string' && !variant.image.startsWith('data:image') && !variant.image.startsWith('http')) {
+      const fullPath = path.join(__dirname, '../../', variant.image);
+      if (fs.existsSync(fullPath)) {
+        return variant.image;
+      }
+    }
+    // Check variant.images
+    if (variant.images && Array.isArray(variant.images)) {
+      for (const img of variant.images) {
+        if (img && typeof img === 'string' && !img.startsWith('data:image') && !img.startsWith('http')) {
+          const fullPath = path.join(__dirname, '../../', img);
+          if (fs.existsSync(fullPath)) {
+            return img;
+          }
+        }
+      }
+    }
+  }
+  return null;
+};
+
 module.exports = {
   saveBase64Image,
   getImageUrl,
-  deleteImageFile
+  deleteImageFile,
+  getValidProductImage
 };

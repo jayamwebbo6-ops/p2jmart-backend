@@ -1,7 +1,7 @@
 const Product = require('../models/Product');
 const Category = require('../models/Category');
 const Subcategory = require('../models/Subcategory');
-const { saveBase64Image, deleteImageFile, getImageUrl } = require('../utils/imageHelper');
+const { saveBase64Image, deleteImageFile, getImageUrl, getValidProductImage } = require('../utils/imageHelper');
 
 // Helper to extract relative path from absolute URLs before saving to DB
 const getRelativeImagePath = (urlOrPath) => {
@@ -41,12 +41,14 @@ const formatProductResponse = (prod) => {
     }
   }
 
+  const resolvedImage = getValidProductImage(prodObj.image, prodObj);
+
   return {
     ...prodObj,
     id: prodObj._id.toString(),
     _id: prodObj._id.toString(),
     collection: prodObj.collectionName || 'None',
-    image: getImageUrl(prodObj.image),
+    image: getImageUrl(resolvedImage),
     variants: formattedVariants,
     price: derivedPrice,
     originalPrice: derivedOriginalPrice,
@@ -60,6 +62,8 @@ const formatProductResponse = (prod) => {
       : prodObj.subcategory
   };
 };
+
+exports.formatProductResponse = formatProductResponse;
 
 // 1. Get all products (with optional filtering and populating)
 exports.getProducts = async (req, res) => {
