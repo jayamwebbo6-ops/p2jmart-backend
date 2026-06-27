@@ -180,6 +180,7 @@ exports.createProduct = async (req, res) => {
         price: Number(v.price) || 0,
         originalPrice: v.originalPrice ? Number(v.originalPrice) : null,
         stock: Number(v.stock) || 0,
+        weight: Number(v.weight) || 0,
         image: savedVarImage,
         images: savedVarImages
       };
@@ -374,6 +375,7 @@ exports.updateProduct = async (req, res) => {
         price: Number(v.price) || 0,
         originalPrice: v.originalPrice ? Number(v.originalPrice) : null,
         stock: Number(v.stock) || 0,
+        weight: Number(v.weight) || 0,
         image: savedVarImage,
         images: savedVarImages
       };

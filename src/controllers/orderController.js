@@ -28,6 +28,7 @@ exports.createOrder = async (req, res, next) => {
       paymentMethod,
       paymentStatus = 'paid',
       subtotal,
+      gst = 0,
       shippingFee,
       total,
       isDirectPurchase = false
@@ -72,6 +73,7 @@ exports.createOrder = async (req, res, next) => {
       paymentMethod,
       paymentStatus,
       subtotal: Number(subtotal),
+      gst: Number(gst),
       shippingFee: Number(shippingFee),
       total: Number(total),
       status: 'Processing',
