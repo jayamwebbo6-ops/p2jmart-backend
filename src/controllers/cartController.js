@@ -1,13 +1,22 @@
 const CartItem = require('../models/CartItem');
+const { getValidProductImage, getImageUrl } = require('../utils/imageHelper');
 
-const normalizeCartItem = (item) => ({
-  ...item,
-  id: item._id
-});
+const normalizeCartItem = (item) => {
+  const product = item.productId;
+  // Get valid relative path or URL, checking if file exists on disk and falling back to variant if not
+  const resolvedPath = getValidProductImage(item.image, product);
+  
+  return {
+    ...item,
+    id: item._id,
+    productId: product ? (product._id || product.id) : item.productId,
+    image: getImageUrl(resolvedPath)
+  };
+};
 
 exports.getCart = async (req, res, next) => {
   try {
-    const items = await CartItem.find({ user: req.user._id }).lean();
+    const items = await CartItem.find({ user: req.user._id }).populate('productId').lean();
     return res.status(200).json({
       success: true,
       data: items.map(normalizeCartItem)
@@ -52,7 +61,7 @@ exports.addToCart = async (req, res, next) => {
       });
     }
 
-    const items = await CartItem.find({ user: req.user._id }).lean();
+    const items = await CartItem.find({ user: req.user._id }).populate('productId').lean();
     return res.status(200).json({
       success: true,
       message: 'Item added to cart successfully',
@@ -79,11 +88,11 @@ exports.updateCartItem = async (req, res, next) => {
     Object.assign(cartItem, payload);
     await cartItem.save();
 
-    const items = await CartItem.find({ user: req.user._id }).lean();
+    const items = await CartItem.find({ user: req.user._id }).populate('productId').lean();
     return res.status(200).json({
       success: true,
       message: 'Cart item updated',
-      data: items
+      data: items.map(normalizeCartItem)
     });
   } catch (err) {
     next(err);
@@ -95,11 +104,11 @@ exports.removeCartItem = async (req, res, next) => {
     const { id } = req.params;
     await CartItem.deleteOne({ _id: id, user: req.user._id });
 
-    const items = await CartItem.find({ user: req.user._id }).lean();
+    const items = await CartItem.find({ user: req.user._id }).populate('productId').lean();
     return res.status(200).json({
       success: true,
       message: 'Cart item removed',
-      data: items
+      data: items.map(normalizeCartItem)
     });
   } catch (err) {
     next(err);
