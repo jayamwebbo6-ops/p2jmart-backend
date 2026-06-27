@@ -51,6 +51,7 @@ const formatProductResponse = (prod) => {
     price: derivedPrice,
     originalPrice: derivedOriginalPrice,
     discount: derivedDiscount,
+    isActive: prodObj.isActive !== false,
     category: prodObj.category && prodObj.category._id 
       ? { id: prodObj.category._id.toString(), name: prodObj.category.name } 
       : prodObj.category,
@@ -63,11 +64,17 @@ const formatProductResponse = (prod) => {
 // 1. Get all products (with optional filtering and populating)
 exports.getProducts = async (req, res) => {
   try {
-    const { categoryId, subcategoryId, customizeProduct } = req.query;
+    const { categoryId, subcategoryId, customizeProduct, includeInactive } = req.query;
     const filter = {};
     if (categoryId) filter.category = categoryId;
     if (subcategoryId) filter.subcategory = subcategoryId;
     if (customizeProduct) filter.customizeProduct = customizeProduct;
+
+    // Only show active products on public/user requests
+    // Admin passes includeInactive=true to see all products
+    if (includeInactive !== 'true') {
+      filter.isActive = { $ne: false };
+    }
 
     const products = await Product.find(filter)
       .populate('category', 'name')
@@ -468,6 +475,35 @@ exports.deleteProduct = async (req, res) => {
     res.status(200).json({
       success: true,
       message: 'Product and all associated images deleted successfully'
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message || 'Internal Server Error'
+    });
+  }
+};
+
+// 6. Toggle Product Active/Inactive Status
+exports.toggleProductStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const product = await Product.findById(id);
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found'
+      });
+    }
+
+    product.isActive = !product.isActive;
+    await product.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Product ${product.isActive ? 'activated' : 'deactivated'} successfully`,
+      data: { isActive: product.isActive }
     });
   } catch (err) {
     res.status(500).json({

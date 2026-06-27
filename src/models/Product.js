@@ -83,6 +83,10 @@ const ProductSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  isActive: {
+    type: Boolean,
+    default: true
+  },
   category: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Category',
