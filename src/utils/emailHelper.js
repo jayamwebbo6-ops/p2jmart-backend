@@ -1,6 +1,6 @@
 const nodemailer = require('nodemailer');
 
-exports.sendEmail = async (to, subject, text) => {
+exports.sendEmail = async (to, subject, text, html) => {
   const transporter = nodemailer.createTransport({
     host: process.env.EMAIL_HOST,
     port: parseInt(process.env.EMAIL_PORT, 10) || 587,
@@ -15,6 +15,7 @@ exports.sendEmail = async (to, subject, text) => {
     from: `"${process.env.EMAIL_FROM_NAME}" <${process.env.EMAIL_FROM_EMAIL}>`,
     to,
     subject,
-    text
+    text,
+    html: html || `<pre style="font-family: Arial, sans-serif; white-space: pre-wrap;">${text}</pre>`
   });
 };
