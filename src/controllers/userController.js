@@ -1,6 +1,107 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { saveBase64Image, getImageUrl, deleteImageFile } = require('../utils/imageHelper');
+const { sendEmail } = require('../utils/emailHelper'); // Helper that uses Nodemailer underneath
+
+// Helper to generate JWT token (Re-usable)
+const generateToken = (userId) => {
+  return jwt.sign(
+    { id: userId, role: 'User' },
+    process.env.JWT_SECRET || 'jwt_secret_p2jmart',
+    { expiresIn: '7d' }
+  );
+};
+
+// 1. Send / Resend OTP
+exports.sendOTP = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'Email is required' });
+    }
+
+    const lowerEmail = email.toLowerCase();
+
+    // Generate a 6-digit cryptographic-style numeric OTP string
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 Minutes Expiry
+
+    // Find user or create a temporary skeleton if they are logging in for the first time
+    let user = await User.findOne({ email: lowerEmail });
+    if (!user) {
+      user = new User({ email: lowerEmail });
+    }
+
+    // Assign the OTP parameters
+    user.otp = otp;
+    user.otpExpiresAt = otpExpiresAt;
+    user.isVerified = false; // Reset verification status until OTP is matched
+    await user.save();
+
+    // Send the email via Nodemailer utility
+    const emailSubject = 'Your Login OTP - P2J Mart';
+    const emailText = `Your temporary login code is ${otp}. It will expire in 5 minutes.`;
+    
+    await sendEmail(lowerEmail, emailSubject, emailText);
+
+    return res.status(200).json({
+      success: true,
+      message: 'OTP sent to your email successfully'
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// 2. Verify OTP and Authenticate User
+exports.verifyOTP = async (req, res, next) => {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) {
+      return res.status(400).json({ success: false, message: 'Email and OTP are required' });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+
+    if (!user || !user.otp) {
+      return res.status(400).json({ success: false, message: 'No active OTP request found for this email' });
+    }
+
+    // Check if OTP is expired
+    if (new Date() > user.otpExpiresAt) {
+      return res.status(400).json({ success: false, message: 'OTP has expired. Please request a new one.' });
+    }
+
+    // Validate OTP match
+    if (user.otp !== otp) {
+      return res.status(400).json({ success: false, message: 'Invalid OTP code' });
+    }
+
+    // Clear OTP fields upon successful verification
+    user.otp = null;
+    user.otpExpiresAt = null;
+    user.isVerified = true;
+    await user.save();
+
+    // Generate auth token
+    const token = generateToken(user._id);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Logged in successfully via OTP',
+      token,
+      data: {
+        id: user._id,
+        name: user.name || '',
+        email: user.email,
+        photo: getImageUrl(user.photo),
+        phone: user.phone || ''
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};
 
 // Google Auth Login / Sign Up
 exports.googleLogin = async (req, res, next) => {
@@ -13,7 +114,6 @@ exports.googleLogin = async (req, res, next) => {
       });
     }
 
-    // Verify Google ID Token using Google API (industry standard self-contained verification)
     const verifyUrl = `https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`;
     const googleRes = await fetch(verifyUrl);
     const tokenInfo = await googleRes.json();
@@ -25,7 +125,6 @@ exports.googleLogin = async (req, res, next) => {
       });
     }
 
-    // Validate Audience matches our Google Client ID
     const clientId = process.env.GOOGLE_CLIENT_ID;
     if (tokenInfo.aud !== clientId) {
       return res.status(400).json({
@@ -36,31 +135,27 @@ exports.googleLogin = async (req, res, next) => {
 
     const { sub: googleId, name, email, picture: photo } = tokenInfo;
 
-    // Check if user already exists
     let user = await User.findOne({ googleId });
     if (!user) {
-      // Check if email exists (bind Google identity to existing account if email matches)
       user = await User.findOne({ email: email.toLowerCase() });
       if (user) {
         user.googleId = googleId;
         user.photo = photo || user.photo;
+        // Mark as verified since Google confirms they own this mailbox
+        user.isVerified = true; 
         await user.save();
       } else {
         user = await User.create({
           googleId,
           name,
           email: email.toLowerCase(),
-          photo: photo || ''
+          photo: photo || '',
+          isVerified: true
         });
       }
     }
 
-    // Generate user JWT token
-    const token = jwt.sign(
-      { id: user._id, role: 'User' },
-      process.env.JWT_SECRET || 'jwt_secret_p2jmart',
-      { expiresIn: '7d' }
-    );
+    const token = generateToken(user._id);
 
     return res.status(200).json({
       success: true,
@@ -113,16 +208,13 @@ exports.updateProfile = async (req, res, next) => {
     if (name) user.name = name;
     if (phone !== undefined) user.phone = phone;
     
-    // Save image if new photo uploaded as base64
     if (photo !== undefined) {
-      // If a new photo base64 is sent, delete the old file first
       if (photo && photo.startsWith('data:image')) {
         if (user.photo && !user.photo.startsWith('http')) {
           deleteImageFile(user.photo);
         }
         user.photo = saveBase64Image(photo, 'user', 'user');
       } else if (!photo) {
-        // If photo is set to null/empty string, delete old file
         if (user.photo && !user.photo.startsWith('http')) {
           deleteImageFile(user.photo);
         }
