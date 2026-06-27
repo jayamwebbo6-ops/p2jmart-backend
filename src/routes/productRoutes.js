@@ -8,6 +8,7 @@ router.get('/', productController.getProducts);
 router.get('/:id', productController.getProductById);
 router.post('/', protectAdmin, productController.createProduct);
 router.put('/:id', protectAdmin, productController.updateProduct);
+router.patch('/:id/toggle-status', protectAdmin, productController.toggleProductStatus);
 router.delete('/:id', protectAdmin, productController.deleteProduct);
 
 module.exports = router;
