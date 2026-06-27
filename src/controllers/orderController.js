@@ -60,7 +60,8 @@ exports.createOrder = async (req, res, next) => {
       image: item.image || (item.images && item.images[0]) || '',
       selectedOptions: item.selectedOptions || {},
       isComboProduct: Boolean(item.isComboProduct),
-      includedProducts: item.includedProducts || []
+      includedProducts: item.includedProducts || [],
+      weight: Number(item.weight || 0)
     }));
 
     const newOrder = await Order.create({

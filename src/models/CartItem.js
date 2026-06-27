@@ -39,6 +39,10 @@ const CartItemSchema = new mongoose.Schema({
   includedProducts: {
     type: [mongoose.Schema.Types.Mixed],
     default: []
+  },
+  weight: {
+    type: Number,
+    default: 0
   }
 }, {
   timestamps: true

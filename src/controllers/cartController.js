@@ -19,7 +19,7 @@ exports.getCart = async (req, res, next) => {
 
 exports.addToCart = async (req, res, next) => {
   try {
-    const { productId, title, price, quantity = 1, image = '', selectedOptions = {}, isComboProduct = false, includedProducts = [] } = req.body;
+    const { productId, title, price, quantity = 1, image = '', selectedOptions = {}, isComboProduct = false, includedProducts = [], weight = 0 } = req.body;
 
     if (!productId || !title || price === undefined) {
       return res.status(400).json({
@@ -35,6 +35,7 @@ exports.addToCart = async (req, res, next) => {
       cartItem.image = image;
       cartItem.isComboProduct = isComboProduct;
       cartItem.includedProducts = includedProducts;
+      cartItem.weight = weight;
       await cartItem.save();
     } else {
       cartItem = await CartItem.create({
@@ -46,7 +47,8 @@ exports.addToCart = async (req, res, next) => {
         image,
         selectedOptions,
         isComboProduct,
-        includedProducts
+        includedProducts,
+        weight
       });
     }
 

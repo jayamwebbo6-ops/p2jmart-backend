@@ -56,6 +56,10 @@ const ProductSchema = new mongoose.Schema({
     price: Number,
     originalPrice: Number,
     stock: Number,
+    weight: {
+      type: Number,
+      default: 0
+    },
     image: String,
     images: [String]
   }],

@@ -83,8 +83,11 @@ apiRouter.use('/enquiries', enqueiresRoutes);
 const orderRoutes = require('./src/routes/orderRoutes');
 apiRouter.use('/orders', orderRoutes);
 
+const wishlistRoutes = require('./src/routes/wishlistRoutes');
+apiRouter.use('/wishlist', wishlistRoutes);
+
 // Mount the API Router under both prefixes (default /api and dynamic base URL from env)
-const BASE_URL = process.env.BASE_URL || 'p2jmart';
+
 app.use('/api', apiRouter);
 app.use(`/${BASE_URL}/api`, apiRouter);
 
