@@ -28,6 +28,7 @@ exports.createOrder = async (req, res, next) => {
       paymentMethod,
       paymentStatus = 'paid',
       subtotal,
+      gst = 0,
       shippingFee,
       total,
       isDirectPurchase = false
@@ -60,7 +61,8 @@ exports.createOrder = async (req, res, next) => {
       image: item.image || (item.images && item.images[0]) || '',
       selectedOptions: item.selectedOptions || {},
       isComboProduct: Boolean(item.isComboProduct),
-      includedProducts: item.includedProducts || []
+      includedProducts: item.includedProducts || [],
+      weight: Number(item.weight || 0)
     }));
 
     const newOrder = await Order.create({
@@ -71,6 +73,7 @@ exports.createOrder = async (req, res, next) => {
       paymentMethod,
       paymentStatus,
       subtotal: Number(subtotal),
+      gst: Number(gst),
       shippingFee: Number(shippingFee),
       total: Number(total),
       status: 'Processing',

@@ -10,6 +10,7 @@ router.put('/:id', protectAdmin, categoryController.updateCategory);
 router.delete('/:id', protectAdmin, categoryController.deleteCategory);
 
 // Subcategory endpoints
+router.get('/sub/:id/details', categoryController.getSubcategoryDetails);
 router.post('/sub', protectAdmin, categoryController.createSubcategory);
 router.put('/sub/:id', protectAdmin, categoryController.updateSubcategory);
 router.delete('/sub/:id', protectAdmin, categoryController.deleteSubcategory);

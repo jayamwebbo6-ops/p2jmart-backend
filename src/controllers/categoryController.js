@@ -327,3 +327,32 @@ exports.deleteSubcategory = async (req, res) => {
     });
   }
 };
+
+// 8. Get subcategory details including parent category name
+exports.getSubcategoryDetails = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const subcategory = await Subcategory.findById(id).populate('category').lean();
+    if (!subcategory) {
+      return res.status(404).json({
+        success: false,
+        message: 'Subcategory not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        subcategoryName: subcategory.name,
+        categoryName: subcategory.category ? subcategory.category.name : 'Shop'
+      }
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message || 'Internal Server Error'
+    });
+  }
+};
+

@@ -47,6 +47,10 @@ const OrderSchema = new mongoose.Schema(
         includedProducts: {
           type: [mongoose.Schema.Types.Mixed],
           default: []
+        },
+        weight: {
+          type: Number,
+          default: 0
         }
       }
     ],
@@ -71,6 +75,10 @@ const OrderSchema = new mongoose.Schema(
     subtotal: {
       type: Number,
       required: true
+    },
+    gst: {
+      type: Number,
+      default: 0
     },
     shippingFee: {
       type: Number,
