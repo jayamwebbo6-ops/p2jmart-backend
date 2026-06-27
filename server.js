@@ -52,6 +52,11 @@ apiRouter.use('/addresses', addressRoutes);
 const attributeRoutes = require('./src/routes/attributeRoutes');
 apiRouter.use('/attributes', attributeRoutes);
 
+// contact form Routes
+const contactUs = require('./src/routes/contactRoutes.js');
+apiRouter.use('/contact-us', contactUs );
+
+
 // Category & Subcategory Routes
 const categoryRoutes = require('./src/routes/categoryRoutes');
 apiRouter.use('/categories', categoryRoutes);
