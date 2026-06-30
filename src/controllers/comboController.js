@@ -35,7 +35,7 @@ exports.getAllCombos = async (req, res, next) => {
 // Create a new combo pack
 exports.createCombo = async (req, res, next) => {
   try {
-    const { name, offerPrice, totalPrice, status, category, subcategory, description, selectedItemIds } = req.body;
+    const { name, offerPrice, totalPrice, status, category, subcategory, description, selectedItemIds, selectedVariants } = req.body;
 
     if (!name || !selectedItemIds || selectedItemIds.length === 0) {
       return res.status(400).json({
@@ -52,7 +52,8 @@ exports.createCombo = async (req, res, next) => {
       category,
       subcategory,
       description,
-      selectedItemIds
+      selectedItemIds,
+      selectedVariants: selectedVariants || []
     });
 
     const saved = await newCombo.save();
@@ -71,7 +72,7 @@ exports.createCombo = async (req, res, next) => {
 exports.updateCombo = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { name, offerPrice, totalPrice, status, category, subcategory, description, selectedItemIds } = req.body;
+    const { name, offerPrice, totalPrice, status, category, subcategory, description, selectedItemIds, selectedVariants } = req.body;
 
     const combo = await ComboPack.findById(id);
     if (!combo) {
@@ -89,6 +90,7 @@ exports.updateCombo = async (req, res, next) => {
     if (subcategory !== undefined) combo.subcategory = subcategory;
     if (description !== undefined) combo.description = description;
     if (selectedItemIds !== undefined) combo.selectedItemIds = selectedItemIds;
+    if (selectedVariants !== undefined) combo.selectedVariants = selectedVariants;
 
     const saved = await combo.save();
 

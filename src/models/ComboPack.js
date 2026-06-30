@@ -35,6 +35,13 @@ const ComboPackSchema = new mongoose.Schema({
     ref: 'Product',
     required: true
   }],
+  selectedVariants: [{
+    productId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Product'
+    },
+    variantId: String
+  }],
   rating: {
     type: Number,
     default: 5.0
