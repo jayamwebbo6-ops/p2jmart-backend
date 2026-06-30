@@ -1,17 +1,26 @@
 const CartItem = require('../models/CartItem');
-const { getValidProductImage, getImageUrl } = require('../utils/imageHelper');
+const { getValidProductImage, getImageUrl, saveBase64Image } = require('../utils/imageHelper');
 
 const normalizeCartItem = (item) => {
   const product = item.productId;
   // Get valid relative path or URL, checking if file exists on disk and falling back to variant if not
   const resolvedPath = getValidProductImage(item.image, product);
   
-  return {
+  const normalized = {
     ...item,
     id: item._id,
     productId: product ? (product._id || product.id) : item.productId,
     image: getImageUrl(resolvedPath)
   };
+
+  if (normalized.selectedOptions && normalized.selectedOptions.customImage) {
+    normalized.selectedOptions = {
+      ...normalized.selectedOptions,
+      customImage: getImageUrl(normalized.selectedOptions.customImage)
+    };
+  }
+
+  return normalized;
 };
 
 exports.getCart = async (req, res, next) => {
@@ -28,7 +37,7 @@ exports.getCart = async (req, res, next) => {
 
 exports.addToCart = async (req, res, next) => {
   try {
-    const { productId, title, price, quantity = 1, image = '', selectedOptions = {}, isComboProduct = false, includedProducts = [], weight = 0 } = req.body;
+    const { productId, title, price, quantity = 1, image = '', selectedOptions = {}, isComboProduct = false, includedProducts = [], weight = 0, category = 'Catalog' } = req.body;
 
     if (!productId || !title || price === undefined) {
       return res.status(400).json({
@@ -37,14 +46,20 @@ exports.addToCart = async (req, res, next) => {
       });
     }
 
+    const processedSelectedOptions = { ...selectedOptions };
+    if (processedSelectedOptions.customImage) {
+      processedSelectedOptions.customImage = saveBase64Image(processedSelectedOptions.customImage, 'customization', 'custom-img');
+    }
+
     let cartItem = await CartItem.findOne({ user: req.user._id, productId });
     if (cartItem) {
       cartItem.quantity += quantity;
-      cartItem.selectedOptions = selectedOptions;
+      cartItem.selectedOptions = processedSelectedOptions;
       cartItem.image = image;
       cartItem.isComboProduct = isComboProduct;
       cartItem.includedProducts = includedProducts;
       cartItem.weight = weight;
+      cartItem.category = category;
       await cartItem.save();
     } else {
       cartItem = await CartItem.create({
@@ -54,10 +69,11 @@ exports.addToCart = async (req, res, next) => {
         price,
         quantity,
         image,
-        selectedOptions,
+        selectedOptions: processedSelectedOptions,
         isComboProduct,
         includedProducts,
-        weight
+        weight,
+        category
       });
     }
 
@@ -76,6 +92,10 @@ exports.updateCartItem = async (req, res, next) => {
   try {
     const { id } = req.params;
     const payload = req.body;
+
+    if (payload.selectedOptions && payload.selectedOptions.customImage) {
+      payload.selectedOptions.customImage = saveBase64Image(payload.selectedOptions.customImage, 'customization', 'custom-img');
+    }
 
     const cartItem = await CartItem.findOne({ _id: id, user: req.user._id });
     if (!cartItem) {

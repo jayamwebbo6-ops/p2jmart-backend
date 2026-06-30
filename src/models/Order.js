@@ -101,6 +101,14 @@ const OrderSchema = new mongoose.Schema(
       type: Date,
       default: Date.now
     },
+    trackingId: {
+      type: String,
+      default: ''
+    },
+    trackingLink: {
+      type: String,
+      default: ''
+    },
     placedDate: {
       type: Date,
       default: Date.now
