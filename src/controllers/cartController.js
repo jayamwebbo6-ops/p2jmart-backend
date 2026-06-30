@@ -10,7 +10,8 @@ const normalizeCartItem = (item) => {
     ...item,
     id: item._id,
     productId: product ? (product._id || product.id) : item.productId,
-    image: getImageUrl(resolvedPath)
+    image: getImageUrl(resolvedPath),
+    freeShipping: product ? (product.freeShipping || 'No') : 'No'
   };
 
   if (normalized.selectedOptions && normalized.selectedOptions.customImage) {

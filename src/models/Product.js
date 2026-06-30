@@ -38,6 +38,11 @@ const ProductSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  freeShipping: {
+    type: String,
+    enum: ['Yes', 'No'],
+    default: 'No'
+  },
   rating: {
     type: Number,
     default: 5
