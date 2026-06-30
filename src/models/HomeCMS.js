@@ -71,7 +71,17 @@ const HomeCMSSchema = new mongoose.Schema({
   privacyPolicy: [PolicySectionSchema],
   cancellationReturnPolicy: [PolicySectionSchema],
   deliveryPolicy: [PolicySectionSchema],
-  termsConditions: [PolicySectionSchema]
+  termsConditions: [PolicySectionSchema],
+
+  // Global Shipping Configuration Rules
+  freeShippingMinAmount: {
+    type: Number,
+    default: 1000
+  },
+  flatShippingCost: {
+    type: Number,
+    default: 50
+  }
 }, {
   timestamps: true
 });

@@ -153,7 +153,8 @@ exports.createProduct = async (req, res) => {
       seoDescription,
       detailedDescription,
       categoryId,
-      subcategoryId
+      subcategoryId,
+      freeShipping
     } = req.body;
 
     // Process variant images
@@ -252,7 +253,8 @@ exports.createProduct = async (req, res) => {
       seoDescription,
       detailedDescription,
       category: categoryId,
-      subcategory: subcategoryId
+      subcategory: subcategoryId,
+      freeShipping: freeShipping || 'No'
     });
 
     res.status(201).json({
@@ -295,7 +297,8 @@ exports.updateProduct = async (req, res) => {
       seoDescription,
       detailedDescription,
       categoryId,
-      subcategoryId
+      subcategoryId,
+      freeShipping
     } = req.body;
 
     const product = await Product.findById(id);
@@ -413,6 +416,7 @@ exports.updateProduct = async (req, res) => {
     product.warranty = warranty !== undefined ? warranty : product.warranty;
     product.returnPolicy = returnPolicy || product.returnPolicy;
     product.deliveryMode = deliveryMode !== undefined ? deliveryMode : product.deliveryMode;
+    product.freeShipping = freeShipping || product.freeShipping;
 
 
 

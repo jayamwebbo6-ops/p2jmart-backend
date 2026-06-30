@@ -37,7 +37,7 @@ exports.getHomeCMS = async (req, res) => {
         featuredProducts: [],
         trendingProducts: [],
         exclusiveProducts: [],
-        
+
         contactSetting: {
           phones: '+91 925537662, 936675427',
           email: 'p2gmart@gmail.com',
@@ -223,7 +223,9 @@ exports.getHomeCMS = async (req, res) => {
         privacyPolicy: config.privacyPolicy || [],
         cancellationReturnPolicy: config.cancellationReturnPolicy || [],
         deliveryPolicy: config.deliveryPolicy || [],
-        termsConditions: config.termsConditions || []
+        termsConditions: config.termsConditions || [],
+        freeShippingMinAmount: config.freeShippingMinAmount !== undefined ? config.freeShippingMinAmount : 1000,
+        flatShippingCost: config.flatShippingCost !== undefined ? config.flatShippingCost : 50
       }
     });
   } catch (err) {
@@ -237,19 +239,21 @@ exports.getHomeCMS = async (req, res) => {
 // 2. Update Home CMS Config
 exports.updateHomeCMS = async (req, res) => {
   try {
-    const { 
-      heroSlider, 
-      offerBanners, 
-      categoryGrid, 
-      categorySections, 
-      featuredProducts, 
-      trendingProducts, 
+    const {
+      heroSlider,
+      offerBanners,
+      categoryGrid,
+      categorySections,
+      featuredProducts,
+      trendingProducts,
       exclusiveProducts,
       contactSetting,
       privacyPolicy,
       cancellationReturnPolicy,
       deliveryPolicy,
-      termsConditions
+      termsConditions,
+      freeShippingMinAmount,
+      flatShippingCost
     } = req.body;
 
     let config = await HomeCMS.findOne({ key: CONFIG_KEY });
@@ -407,6 +411,13 @@ exports.updateHomeCMS = async (req, res) => {
       }));
     }
 
+    if (freeShippingMinAmount !== undefined) {
+      config.freeShippingMinAmount = Number(freeShippingMinAmount);
+    }
+    if (flatShippingCost !== undefined) {
+      config.flatShippingCost = Number(flatShippingCost);
+    }
+
     await config.save();
 
     // Clean up replaced images from server storage
@@ -475,7 +486,9 @@ exports.updateHomeCMS = async (req, res) => {
         privacyPolicy: config.privacyPolicy || [],
         cancellationReturnPolicy: config.cancellationReturnPolicy || [],
         deliveryPolicy: config.deliveryPolicy || [],
-        termsConditions: config.termsConditions || []
+        termsConditions: config.termsConditions || [],
+        freeShippingMinAmount: config.freeShippingMinAmount !== undefined ? config.freeShippingMinAmount : 1000,
+        flatShippingCost: config.flatShippingCost !== undefined ? config.flatShippingCost : 50
       }
     });
   } catch (err) {
