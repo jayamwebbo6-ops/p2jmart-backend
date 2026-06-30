@@ -15,4 +15,10 @@ router.post('/verify-otp', userController.verifyOTP);
 router.get('/profile', protectUser, userController.getProfile);
 router.put('/profile', protectUser, validateUserProfile, userController.updateProfile);
 
+
+// Admin Customer Management Endpoints
+router.get('/admin/get-all-users', userController.adminGetAllUsers);
+router.put('/admin/update-status/:id', userController.adminUpdateStatus);
+router.delete('/admin/delete/:id', userController.adminDeleteUser);
+
 module.exports = router;
