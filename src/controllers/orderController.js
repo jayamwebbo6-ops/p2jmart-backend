@@ -1,5 +1,6 @@
 const Order = require('../models/Order');
 const CartItem = require('../models/CartItem');
+const { saveBase64Image, getImageUrl } = require('../utils/imageHelper');
 
 // Helper to map status to colors
 const getStatusColor = (status) => {
@@ -17,6 +18,36 @@ const getStatusColor = (status) => {
     default:
       return 'text-gray-600 bg-gray-50';
   }
+};
+
+// Helper to format order response and resolve customImage URLs to public domain
+const formatOrderResponse = (order) => {
+  if (!order) return null;
+  const isLean = !order.toObject;
+  const orderObj = isLean ? order : order.toObject();
+
+  if (orderObj.items && Array.isArray(orderObj.items)) {
+    orderObj.items = orderObj.items.map(item => {
+      const formattedItem = { ...item };
+      if (formattedItem.selectedOptions) {
+        formattedItem.selectedOptions = { ...formattedItem.selectedOptions };
+        if (formattedItem.selectedOptions.customImage) {
+          formattedItem.selectedOptions.customImage = getImageUrl(formattedItem.selectedOptions.customImage);
+        }
+        if (formattedItem.selectedOptions.customization && typeof formattedItem.selectedOptions.customization === 'object') {
+          formattedItem.selectedOptions.customization = {
+            ...formattedItem.selectedOptions.customization,
+            image: formattedItem.selectedOptions.customization.image
+              ? getImageUrl(formattedItem.selectedOptions.customization.image)
+              : ''
+          };
+        }
+      }
+      return formattedItem;
+    });
+  }
+
+  return orderObj;
 };
 
 // Create a new order
@@ -52,18 +83,31 @@ exports.createOrder = async (req, res, next) => {
     const randomNum = Math.floor(100000 + Math.random() * 900000);
     const orderId = `ORD-${Date.now().toString().slice(-4)}-${randomNum}`;
 
-    // Normalize items
-    const normalizedItems = items.map((item) => ({
-      productId: item.productId || item.id || item._id,
-      title: item.title || item.name,
-      price: Number(item.price),
-      quantity: Number(item.quantity || item.qty || 1),
-      image: item.image || (item.images && item.images[0]) || '',
-      selectedOptions: item.selectedOptions || {},
-      isComboProduct: Boolean(item.isComboProduct),
-      includedProducts: item.includedProducts || [],
-      weight: Number(item.weight || 0)
-    }));
+    // Normalize items and process custom base64 images
+    const normalizedItems = items.map((item) => {
+      const selectedOptions = { ...item.selectedOptions };
+      if (selectedOptions.customImage) {
+        selectedOptions.customImage = saveBase64Image(selectedOptions.customImage, 'customization', 'custom-img');
+      }
+      if (selectedOptions.customization && typeof selectedOptions.customization === 'object') {
+        selectedOptions.customization = { ...selectedOptions.customization };
+        if (selectedOptions.customization.image) {
+          selectedOptions.customization.image = saveBase64Image(selectedOptions.customization.image, 'customization', 'custom-img');
+        }
+      }
+
+      return {
+        productId: item.productId || item.id || item._id,
+        title: item.title || item.name,
+        price: Number(item.price),
+        quantity: Number(item.quantity || item.qty || 1),
+        image: item.image || (item.images && item.images[0]) || '',
+        selectedOptions,
+        isComboProduct: Boolean(item.isComboProduct),
+        includedProducts: item.includedProducts || [],
+        weight: Number(item.weight || 0)
+      };
+    });
 
     const newOrder = await Order.create({
       user: req.user._id,
@@ -90,7 +134,7 @@ exports.createOrder = async (req, res, next) => {
     return res.status(201).json({
       success: true,
       message: 'Order created successfully',
-      data: newOrder
+      data: formatOrderResponse(newOrder)
     });
   } catch (err) {
     next(err);
@@ -100,10 +144,10 @@ exports.createOrder = async (req, res, next) => {
 // Retrieve all orders for logged-in user
 exports.getMyOrders = async (req, res, next) => {
   try {
-    const orders = await Order.find({ user: req.user._id }).sort({ createdAt: -1 });
+    const orders = await Order.find({ user: req.user._id }).sort({ createdAt: -1 }).lean();
     return res.status(200).json({
       success: true,
-      data: orders
+      data: orders.map(formatOrderResponse)
     });
   } catch (err) {
     next(err);
@@ -113,7 +157,7 @@ exports.getMyOrders = async (req, res, next) => {
 // Get single order details
 exports.getOrderById = async (req, res, next) => {
   try {
-    const order = await Order.findOne({ _id: req.params.id, user: req.user._id });
+    const order = await Order.findOne({ _id: req.params.id, user: req.user._id }).lean();
     if (!order) {
       return res.status(404).json({
         success: false,
@@ -122,7 +166,7 @@ exports.getOrderById = async (req, res, next) => {
     }
     return res.status(200).json({
       success: true,
-      data: order
+      data: formatOrderResponse(order)
     });
   } catch (err) {
     next(err);
@@ -162,7 +206,7 @@ exports.cancelOrder = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       message: 'Order cancelled successfully',
-      data: order
+      data: formatOrderResponse(order)
     });
   } catch (err) {
     next(err);
@@ -176,11 +220,12 @@ exports.getAdminOrders = async (req, res, next) => {
   try {
     const orders = await Order.find()
       .populate('user', 'name email phone')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
 
     return res.status(200).json({
       success: true,
-      data: orders
+      data: orders.map(formatOrderResponse)
     });
   } catch (err) {
     next(err);
@@ -206,6 +251,47 @@ exports.updateOrderStatus = async (req, res, next) => {
       });
     }
 
+    if (status === 'Cancelled') {
+      return res.status(400).json({
+        success: false,
+        message: 'Admin is not authorized to cancel orders'
+      });
+    }
+
+    if (order.status === 'Cancelled') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot modify status of a cancelled order'
+      });
+    }
+
+    if (order.status === 'Delivered') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot modify status of a delivered order'
+      });
+    }
+
+    const statusOrderMap = { 'Pending': 0, 'Processing': 1, 'Shipped': 2, 'Delivered': 3 };
+    if (statusOrderMap[status] < statusOrderMap[order.status]) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot revert status from ${order.status} to ${status}`
+      });
+    }
+
+    if (status === 'Shipped') {
+      const { trackingId, trackingLink } = req.body;
+      if (!trackingId || !trackingId.trim() || !trackingLink || !trackingLink.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Tracking ID and Tracking Link are required to ship the order'
+        });
+      }
+      order.trackingId = trackingId.trim();
+      order.trackingLink = trackingLink.trim();
+    }
+
     order.status = status;
     order.statusColor = getStatusColor(status);
     order.statusDate = new Date();
@@ -214,7 +300,7 @@ exports.updateOrderStatus = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       message: `Order status updated to ${status}`,
-      data: order
+      data: formatOrderResponse(order)
     });
   } catch (err) {
     next(err);
