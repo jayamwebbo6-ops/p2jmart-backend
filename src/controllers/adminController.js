@@ -247,3 +247,33 @@ exports.updateProfile = async (req, res, next) => {
     next(err);
   }
 };
+
+
+
+// Import your Admin model here if not already imported at the top of the file
+// const Admin = require('../models/Admin'); 
+
+exports.getAdminEmailPublic = async (req, res) => {
+  try {
+    // Find the single administrator record and strictly return only the email field
+    const admin = await Admin.findOne({ role: "Administrator" }).select('email');
+
+    if (!admin) {
+      return res.status(404).json({
+        success: false,
+        message: "No administrator record found in the database."
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      email: admin.email
+    });
+  } catch (error) {
+    console.error("Error inside getAdminEmailPublic:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server database configuration sync error."
+    });
+  }
+};
