@@ -1,3 +1,4 @@
+const path = require('path'); // Added path module to locate local files
 const { sendEmail } = require('../utils/emailHelper');
 
 exports.handleContactForm = async (req, res, next) => {
@@ -36,33 +37,34 @@ ${message}
     `;
 
     // Attractive HTML version of the same notification
+    // Attractive HTML version of the same notification
     const emailHtmlBody = `
      <div style="background:#eef2f7; padding: 32px 16px; font-family: 'Segoe UI', Arial, sans-serif;">
         <div style="max-width: 580px; margin: 0 auto; background:#ffffff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(15,40,80,0.08); border: 1px solid #e2e8f0;">
  
-          <!-- Header bar -->
-          <div style="background:#0f3a66; padding: 22px 32px;">
-            <table style="width:100%;">
+          <div style="background:#0f3a66; padding: 20px 32px;">
+            <table style="width:100%; border-collapse: collapse;">
               <tr>
-                <td style="color:#ffffff; font-size: 18px; font-weight: 700; letter-spacing: 0.3px;">P2J Mart</td>
-                <td style="text-align:right; color:#9fc1e0; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">Contact Form</td>
+                <td style="vertical-align: middle;">
+                  <div style="background: #ffffff; padding: 6px 12px; border-radius: 6px; display: inline-block; vertical-align: middle; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                    <img src="cid:logo" alt="P2J Mart Logo" style="height: 36px; width: auto; display: block; max-width: 100%;" />
+                  </div>
+                </td>
+                <td style="text-align:right; color:#9fc1e0; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; vertical-align: middle;">Contact Form</td>
               </tr>
             </table>
           </div>
  
-          <!-- Title strip -->
           <div style="background:#156cb4; padding: 16px 32px;">
             <h1 style="margin:0; color:#ffffff; font-size: 17px; font-weight: 600;">New Customer Enquiry Received</h1>
           </div>
  
-          <!-- Subject highlight -->
           <div style="padding: 24px 32px 0;">
             <span style="display:inline-block; background:#e8f1fb; color:#0f3a66; font-size: 12px; font-weight: 700; padding: 6px 14px; border-radius: 4px; border: 1px solid #bcdcfa; text-transform: uppercase; letter-spacing: 0.5px;">
               ${subject}
             </span>
           </div>
  
-          <!-- Sender details -->
           <div style="padding: 20px 32px 4px;">
             <table style="width:100%; border-collapse: collapse;">
               <tr>
@@ -84,30 +86,35 @@ ${message}
             </table>
           </div>
  
-          <!-- Message -->
           <div style="padding: 12px 32px 28px;">
             <p style="margin: 16px 0 8px; color:#64748b; font-size: 12px; font-weight: 600; text-transform: uppercase;">Message</p>
             <div style="background:#f5f8fb; border: 1px solid #e2e8f0; border-left: 3px solid #156cb4; border-radius: 6px; padding: 16px 18px; color:#1e2a3a; font-size: 14px; line-height: 1.6; white-space: pre-wrap;">${message}</div>
           </div>
  
-          <!-- CTA -->
           <div style="padding: 0 32px 32px;">
             <a href="mailto:${email}" style="display:inline-block; background:#156cb4; color:#ffffff; text-decoration:none; font-size: 14px; font-weight: 700; padding: 12px 26px; border-radius: 6px;">
               Reply to ${name}
             </a>
           </div>
  
-          <!-- Footer -->
           <div style="background:#f5f8fb; padding: 18px 32px; border-top: 1px solid #e2e8f0;">
             <p style="margin:0; color:#64748b; font-size: 11px;">This message was sent from the contact form on your P2J Mart website. Please do not reply directly to this notification — use the button above to respond to the customer.</p>
           </div>
  
         </div>
-      </div>
+     </div>
     `;
 
-    // Sends notification direct to your inbox (HTML with plain-text fallback)
-    await sendEmail(process.env.EMAIL_FROM_EMAIL, emailSubject, emailTextBody, emailHtmlBody);
+    // Local file configuration mapping for Nodemailer
+    const attachments = [{
+      filename: 'logo.png',
+      // Note: Adjust '../assets/logo.png' to exactly match where you put your file relative to this controller file
+      path: path.join(__dirname, '../assets/logo.png'), 
+      cid: 'logo' // Links with <img src="cid:logo"> above
+    }];
+
+    // Passes the attachments array as the 5th argument
+    await sendEmail(process.env.EMAIL_FROM_EMAIL, emailSubject, emailTextBody, emailHtmlBody, attachments);
 
     return res.status(200).json({
       success: true,

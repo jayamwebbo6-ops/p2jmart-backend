@@ -1,6 +1,7 @@
 const nodemailer = require('nodemailer');
 
-exports.sendEmail = async (to, subject, text, html) => {
+// Added 'attachments = []' as the 5th parameter with a default empty array fallback
+exports.sendEmail = async (to, subject, text, html, attachments = []) => {
   const transporter = nodemailer.createTransport({
     host: process.env.EMAIL_HOST,
     port: parseInt(process.env.EMAIL_PORT, 10) || 587,
@@ -16,6 +17,7 @@ exports.sendEmail = async (to, subject, text, html) => {
     to,
     subject,
     text,
-    html: html || `<pre style="font-family: Arial, sans-serif; white-space: pre-wrap;">${text}</pre>`
+    html: html || `<pre style="font-family: Arial, sans-serif; white-space: pre-wrap;">${text}</pre>`,
+    attachments 
   });
 };
