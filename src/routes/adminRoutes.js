@@ -6,8 +6,15 @@ const { protectAdmin } = require('../middleware/auth');
 
 const { validateAdminProfile } = require('../middleware/validator');
 
+
+router.post('/forgot-password', adminController.forgotPassword);
+router.post('/reset-password', adminController.resetPassword);
+
 router.post('/login', adminController.login);
 router.get('/profile', protectAdmin, adminController.getProfile);
 router.put('/profile', protectAdmin, validateAdminProfile, adminController.updateProfile);
+
+
+
 
 module.exports = router;

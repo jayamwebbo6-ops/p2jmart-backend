@@ -1,6 +1,9 @@
 const Order = require('../models/Order');
 const CartItem = require('../models/CartItem');
 const { saveBase64Image, getImageUrl } = require('../utils/imageHelper');
+const { sendEmail } = require('../utils/emailHelper'); // Update path to your mail utility
+const User = require('../models/User'); // Update to your exact user model path
+const { getOrderConfirmationTemplate } = require('../utils/emailTemplate');
 
 // Helper to map status to colors
 const getStatusColor = (status) => {
@@ -66,24 +69,18 @@ exports.createOrder = async (req, res, next) => {
     } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'No items provided for order'
-      });
+      return res.status(400).json({ success: false, message: 'No items provided for order' });
     }
 
     if (!shippingAddress || !shippingAddress.fullName || !shippingAddress.streetAddress) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid shipping address details'
-      });
+      return res.status(400).json({ success: false, message: 'Invalid shipping address details' });
     }
 
     // Generate unique order ID
     const randomNum = Math.floor(100000 + Math.random() * 900000);
     const orderId = `ORD-${Date.now().toString().slice(-4)}-${randomNum}`;
 
-    // Normalize items and process custom base64 images
+    // Normalize items
     const normalizedItems = items.map((item) => {
       const selectedOptions = { ...item.selectedOptions };
       if (selectedOptions.customImage) {
@@ -126,10 +123,34 @@ exports.createOrder = async (req, res, next) => {
       placedDate: new Date()
     });
 
-    // CRITICAL REQUIREMENT: Clear the user's cart if this is NOT a Buy Now/Direct Purchase
+    // Clear user cart if not direct buy
     if (!isDirectPurchase) {
       await CartItem.deleteMany({ user: req.user._id });
     }
+
+    // ==========================================
+    // BACKEND EMAIL TRIGGER INTEGRATION
+    // ==========================================
+    try {
+      // 1. Fetch user data safely from your existing DB reference
+      const user = await User.findById(req.user._id);
+      
+      if (user && user.email) {
+        const subject = `p2jmart Order Invoice - ${orderId}`;
+        
+        // 2. Generate template string passing user context and order payload data
+        const htmlBody = getOrderConfirmationTemplate(user, newOrder);
+        
+        // 3. Dispatch out to nodemailer transporter asynchronously without slowing down request response
+        sendEmail(user.email, subject, htmlBody)
+          .then(() => console.log(`Confirmation email sent successfully to: ${user.email}`))
+          .catch((mailErr) => console.error('Nodemailer pipeline background failure:', mailErr));
+      }
+    } catch (emailTriggerError) {
+      // We log the error but don't crash the request, ensuring users don't see a checkout error if email fails
+      console.error('Failed to resolve email profile details during database hook:', emailTriggerError);
+    }
+    // ==========================================
 
     return res.status(201).json({
       success: true,
