@@ -44,8 +44,7 @@ apiRouter.use('/admin', adminRoutes);
 const userRoutes = require('./src/routes/userRoutes');
 apiRouter.use('/user', userRoutes);
 
-const orderConfirmMail = require('./src/routes/orderConfirmMailRoutes.js');
-apiRouter.use('/orders', orderConfirmMail);
+
 
 // Address Routes
 const addressRoutes = require('./src/routes/addressRoutes');

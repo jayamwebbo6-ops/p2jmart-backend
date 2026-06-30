@@ -1,6 +1,9 @@
 const jwt = require('jsonwebtoken');
 const Admin = require('../models/Admin');
 const { saveBase64Image, getImageUrl, deleteImageFile } = require('../utils/imageHelper');
+const crypto = require('crypto');
+const { getForgotPasswordTemplate } = require('../utils/emailTemplate');
+const { sendEmail } = require('../utils/emailHelper');
 
 // Admin Login
 exports.login = async (req, res, next) => {
@@ -60,6 +63,96 @@ exports.login = async (req, res, next) => {
   }
 };
 
+
+
+exports.forgotPassword = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'Please provide an email' });
+    }
+
+    const admin = await Admin.findOne({ email: email.toLowerCase() });
+    if (!admin) {
+      return res.status(404).json({ success: false, message: 'No admin found with that email' });
+    }
+
+    // 1. Generate 6 digit numeric code
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // 2. Save code details directly to the database document
+    admin.resetOtp = otp;
+    admin.resetOtpExpire = Date.now() + 10 * 60 * 1000; // 10 Minute window
+    await admin.save();
+
+    // 3. Compile the structural HTML layout using the reusable function
+    const htmlBody = getForgotPasswordTemplate(otp);
+
+    // 4. Send email using your core transporter configuration
+    await sendEmail({
+      to: admin.email,
+      subject: 'Admin Portal - Password Reset OTP',
+      text: `Your password reset OTP is: ${otp}. It is valid for 10 minutes.`,
+      html: htmlBody
+    });
+
+    return res.status(200).json({ 
+      success: true, 
+      message: 'OTP sent safely to your administration email.' 
+    });
+
+  } catch (err) {
+    // Clean up DB values if failure points occur post-generation
+    next(err);
+  }
+};
+
+
+
+exports.resetPassword = async (req, res, next) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+
+    if (!email || !otp || !newPassword) {
+      return res.status(400).json({ success: false, message: 'All fields are required.' });
+    }
+
+    // Find admin by email, match OTP, and check if OTP has not expired
+    const admin = await Admin.findOne({
+      email: email.toLowerCase().trim(),
+      resetOtp: otp.trim(),
+      resetOtpExpire: { $gt: Date.now() } 
+    });
+
+    if (!admin) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid or expired OTP code.' 
+      });
+    }
+
+    // Set the new password 
+    // (Ensure your schema hashes this pre-save, or hash it here manually using bcrypt)
+    admin.password = newPassword;
+
+    // Clear OTP fields so they can't be reused
+    admin.resetOtp = undefined;
+    admin.resetOtpExpire = undefined;
+    
+    await admin.save();
+
+    return res.status(200).json({ 
+      success: true, 
+      message: 'Password reset successfully!' 
+    });
+
+  } catch (err) {
+    console.error("🔴 Reset Password Controller Error:", err);
+    next(err);
+  }
+};
+
+
 // Get profile
 exports.getProfile = async (req, res, next) => {
   try {
@@ -91,6 +184,10 @@ exports.getProfile = async (req, res, next) => {
     next(err);
   }
 };
+
+
+
+
 
 // Update profile
 exports.updateProfile = async (req, res, next) => {
