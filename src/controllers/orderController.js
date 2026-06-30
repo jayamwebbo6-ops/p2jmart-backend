@@ -131,25 +131,29 @@ exports.createOrder = async (req, res, next) => {
     // ==========================================
     // BACKEND EMAIL TRIGGER INTEGRATION
     // ==========================================
-    try {
-      // 1. Fetch user data safely from your existing DB reference
-      const user = await User.findById(req.user._id);
-      
-      if (user && user.email) {
-        const subject = `p2jmart Order Invoice - ${orderId}`;
-        
-        // 2. Generate template string passing user context and order payload data
-        const htmlBody = getOrderConfirmationTemplate(user, newOrder);
-        
-        // 3. Dispatch out to nodemailer transporter asynchronously without slowing down request response
-        sendEmail(user.email, subject, htmlBody)
-          .then(() => console.log(`Confirmation email sent successfully to: ${user.email}`))
-          .catch((mailErr) => console.error('Nodemailer pipeline background failure:', mailErr));
-      }
-    } catch (emailTriggerError) {
-      // We log the error but don't crash the request, ensuring users don't see a checkout error if email fails
-      console.error('Failed to resolve email profile details during database hook:', emailTriggerError);
-    }
+   try {
+  // 1. Fetch user data safely from your existing DB reference
+  const user = await User.findById(req.user._id);
+  
+  if (user && user.email) {
+    const subject = `p2jmart Order Invoice - ${orderId}`;
+    
+    // 2. Generate template string passing user context and order payload data
+    const htmlBody = getOrderConfirmationTemplate(user, newOrder);
+    
+    // 3. FIX: Wrapped arguments inside an object configuration matches helper structure
+    sendEmail({
+      to: user.email,
+      subject: subject,
+      html: htmlBody
+    })
+      .then(() => console.log(`Confirmation email sent successfully to: ${user.email}`))
+      .catch((mailErr) => console.error('Nodemailer pipeline background failure:', mailErr));
+  }
+} catch (emailTriggerError) {
+  // We log the error but don't crash the request, ensuring users don't see a checkout error if email fails
+  console.error('Failed to resolve email profile details during database hook:', emailTriggerError);
+}
     // ==========================================
 
     return res.status(201).json({
