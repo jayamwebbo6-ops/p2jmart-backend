@@ -1,4 +1,7 @@
+const mongoose = require('mongoose'); // 🟢 Added mongoose import for ObjectId conversion
+
 const Product = require('../models/Product');
+const Order = require('../models/Order');
 const Category = require('../models/Category');
 const Subcategory = require('../models/Subcategory');
 const { saveBase64Image, deleteImageFile, getImageUrl, getValidProductImage } = require('../utils/imageHelper');
@@ -74,8 +77,6 @@ exports.getProducts = async (req, res) => {
     if (subcategoryId) filter.subcategory = subcategoryId;
     if (customizeProduct) filter.customizeProduct = customizeProduct;
 
-    // Only show active products on public/user requests
-    // Admin passes includeInactive=true to see all products
     if (includeInactive !== 'true') {
       filter.isActive = { $ne: false };
     }
@@ -157,7 +158,6 @@ exports.createProduct = async (req, res) => {
       freeShipping
     } = req.body;
 
-    // Process variant images
     const processedVariants = (variants || []).map((v, idx) => {
       const savedVarImages = [];
       if (v.images && v.images.length > 0) {
@@ -220,7 +220,6 @@ exports.createProduct = async (req, res) => {
       });
     }
 
-    // Process main product image (if Base64 or existing relative path)
     let savedMainImage = '';
     if (image) {
       const cleanImg = getRelativeImagePath(image);
@@ -254,7 +253,8 @@ exports.createProduct = async (req, res) => {
       detailedDescription,
       category: categoryId,
       subcategory: subcategoryId,
-      freeShipping: freeShipping || 'No'
+      freeShipping: freeShipping || 'No',
+      reviewList: [] // Ensure array initializes cleanly
     });
 
     res.status(201).json({
@@ -283,13 +283,6 @@ exports.updateProduct = async (req, res) => {
       warranty,
       returnPolicy,
       deliveryMode,
-       price,
-      originalPrice,
-      discount,
-     
-      rating,
-      reviews,
-      selectedAttributes,
       variants,
       image,
       metaTitle,
@@ -298,7 +291,9 @@ exports.updateProduct = async (req, res) => {
       detailedDescription,
       categoryId,
       subcategoryId,
-      freeShipping
+      freeShipping,
+      rating,
+      reviews
     } = req.body;
 
     const product = await Product.findById(id);
@@ -309,7 +304,6 @@ exports.updateProduct = async (req, res) => {
       });
     }
 
-    // Process main image update
     if (image !== undefined) {
       if (!image) {
         if (product.image) deleteImageFile(getRelativeImagePath(product.image));
@@ -325,13 +319,10 @@ exports.updateProduct = async (req, res) => {
       }
     }
 
-    // Keep track of old variant images to delete replaced ones
     const oldVariants = product.variants || [];
 
-    // Process updated variants list
     const processedVariants = (variants || []).map((v, idx) => {
       const oldVar = oldVariants.find(ov => ov.id === v.id) || {};
-      
       const savedVarImages = [];
       const incomingImages = v.images || [];
       const oldVarImages = oldVar.images || [];
@@ -348,7 +339,6 @@ exports.updateProduct = async (req, res) => {
         }
       });
 
-      // Delete images that are in oldVar.images but not in savedVarImages
       oldVarImages.forEach(oldImg => {
         if (oldImg) {
           const cleanOldImg = getRelativeImagePath(oldImg);
@@ -363,9 +353,7 @@ exports.updateProduct = async (req, res) => {
       if (v.image) {
         const cleanVarImg = getRelativeImagePath(v.image);
         if (cleanVarImg.startsWith('data:image')) {
-          if (oldVar.image) {
-            deleteImageFile(getRelativeImagePath(oldVar.image));
-          }
+          if (oldVar.image) deleteImageFile(getRelativeImagePath(oldVar.image));
           savedVarImage = saveBase64Image(cleanVarImg, 'products', `variant-${idx}`);
         } else {
           savedVarImage = cleanVarImg;
@@ -374,7 +362,6 @@ exports.updateProduct = async (req, res) => {
         savedVarImage = savedVarImages[0];
       }
 
-      // Cleanup old main image if it was replaced by a fallback or changed
       if (oldVar.image) {
         const cleanOldVarImg = getRelativeImagePath(oldVar.image);
         const cleanSavedVarImages = savedVarImages.map(url => getRelativeImagePath(url));
@@ -395,7 +382,6 @@ exports.updateProduct = async (req, res) => {
       };
     });
 
-    // Delete any old variant images that are completely removed from the new variants list
     oldVariants.forEach(oldV => {
       const exists = (variants || []).some(v => v.id === oldV.id);
       if (!exists) {
@@ -406,7 +392,6 @@ exports.updateProduct = async (req, res) => {
       }
     });
 
-    // Update fields
     product.title = title || product.title;
     product.description = description !== undefined ? description : product.description;
     product.brand = brand !== undefined ? brand : product.brand;
@@ -417,15 +402,8 @@ exports.updateProduct = async (req, res) => {
     product.returnPolicy = returnPolicy || product.returnPolicy;
     product.deliveryMode = deliveryMode !== undefined ? deliveryMode : product.deliveryMode;
     product.freeShipping = freeShipping || product.freeShipping;
-
-
-
-    product.rating = rating !== undefined ? Number(rating) : product.rating;
-    product.reviews = reviews !== undefined ? Number(reviews) : product.reviews;
-    product.selectedAttributes = selectedAttributes || product.selectedAttributes;
     product.variants = processedVariants;
 
-    // Apply main image fallback if it's currently empty
     if (!product.image && processedVariants.length > 0) {
       product.image = processedVariants[0].image || (processedVariants[0].images && processedVariants[0].images.length > 0 ? processedVariants[0].images[0] : '');
     }
@@ -463,16 +441,10 @@ exports.deleteProduct = async (req, res) => {
       });
     }
 
-    // Delete main image file
-    if (product.image) {
-      deleteImageFile(getRelativeImagePath(product.image));
-    }
+    if (product.image) deleteImageFile(getRelativeImagePath(product.image));
 
-    // Delete all variant image files
     (product.variants || []).forEach(v => {
-      if (v.image) {
-        deleteImageFile(getRelativeImagePath(v.image));
-      }
+      if (v.image) deleteImageFile(getRelativeImagePath(v.image));
       (v.images || []).forEach(img => {
         if (img) deleteImageFile(getRelativeImagePath(img));
       });
@@ -520,3 +492,4 @@ exports.toggleProductStatus = async (req, res) => {
     });
   }
 };
+

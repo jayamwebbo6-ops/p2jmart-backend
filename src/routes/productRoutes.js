@@ -1,7 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const productController = require('../controllers/productController');
-const { protectAdmin } = require('../middleware/auth');
+
+// 🔒 Aligned perfectly with your middleware exports file!
+const { protectAdmin } = require('../middleware/auth'); 
+
 
 // Product endpoints
 router.get('/', productController.getProducts);
@@ -10,5 +13,7 @@ router.post('/', protectAdmin, productController.createProduct);
 router.put('/:id', protectAdmin, productController.updateProduct);
 router.patch('/:id/toggle-status', protectAdmin, productController.toggleProductStatus);
 router.delete('/:id', protectAdmin, productController.deleteProduct);
+
+
 
 module.exports = router;
