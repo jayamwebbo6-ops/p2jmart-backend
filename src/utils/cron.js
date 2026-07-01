@@ -39,7 +39,7 @@ const processExpiredReservations = async () => {
             continue;
           }
 
-          const variant = product.variants.find(v => v.id === item.variantId);
+          const variant = product.variants.find(v => v.id === item.variantId || v._id?.toString() === item.variantId);
           if (!variant) {
             console.error(`[Inventory Cron] Variant ${item.variantId} not found on Product ${product.title} for restocking`);
             continue;

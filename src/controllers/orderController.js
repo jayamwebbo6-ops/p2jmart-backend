@@ -40,8 +40,22 @@ const findMatchingVariant = (product, selectedOptions = {}) => {
 };
 
 const validateAndDeductStock = async (items) => {
-  const stockUpdates = []; // stores { product, variant, quantity }
+  const productCache = {}; // maps productId string -> Product mongoose document instance
   const reservationItems = []; // stores { productId, variantId, quantity, title }
+
+  // Helper function to fetch product from cache or database
+  const getProductDoc = async (id) => {
+    if (!id) return null;
+    const idStr = id.toString();
+    if (productCache[idStr]) {
+      return productCache[idStr];
+    }
+    const doc = await Product.findById(id);
+    if (doc) {
+      productCache[idStr] = doc;
+    }
+    return doc;
+  };
 
   for (const item of items) {
     const quantity = Number(item.quantity) || 1;
@@ -49,13 +63,16 @@ const validateAndDeductStock = async (items) => {
     if (item.isComboProduct) {
       // 1. Combo Product
       // Check if it's a pre-defined ComboPack
-      const combo = await ComboPack.findById(item.productId);
+      let combo = null;
+      if (item.productId && /^[0-9a-fA-F]{24}$/.test(item.productId)) {
+        combo = await ComboPack.findById(item.productId);
+      }
       if (combo && combo.selectedVariants && combo.selectedVariants.length > 0) {
         for (const sv of combo.selectedVariants) {
-          const prod = await Product.findById(sv.productId);
+          const prod = await getProductDoc(sv.productId);
           if (!prod) continue;
           
-          const variant = prod.variants.find(v => v.id === sv.variantId);
+          const variant = prod.variants.find(v => v.id === sv.variantId || v._id?.toString() === sv.variantId);
           if (!variant) continue;
           
           const neededQty = quantity; // Each combo contains 1 of each product
@@ -63,10 +80,10 @@ const validateAndDeductStock = async (items) => {
             throw new Error(`Item '${prod.title}' inside Combo Pack is out of stock. Available: ${variant.stock}`);
           }
           
-          stockUpdates.push({ product: prod, variant, quantity: neededQty });
+          variant.stock -= neededQty;
           reservationItems.push({
             productId: prod._id,
-            variantId: variant.id,
+            variantId: variant.id || variant._id?.toString(),
             quantity: neededQty,
             title: `${prod.title} (Combo Component)`
           });
@@ -76,7 +93,7 @@ const validateAndDeductStock = async (items) => {
         const included = item.includedProducts || [];
         for (const subItem of included) {
           const subId = subItem.productId || subItem.id || subItem._id;
-          const prod = await Product.findById(subId);
+          const prod = await getProductDoc(subId);
           if (!prod) continue;
           
           // Custom combo subItem might not specify variantId, default to first variant
@@ -88,10 +105,10 @@ const validateAndDeductStock = async (items) => {
             throw new Error(`Item '${prod.title}' inside custom pack is out of stock. Available: ${variant.stock}`);
           }
           
-          stockUpdates.push({ product: prod, variant, quantity: neededQty });
+          variant.stock -= neededQty;
           reservationItems.push({
             productId: prod._id,
-            variantId: variant.id,
+            variantId: variant.id || variant._id?.toString(),
             quantity: neededQty,
             title: `${prod.title} (Custom Component)`
           });
@@ -99,7 +116,7 @@ const validateAndDeductStock = async (items) => {
       }
     } else {
       // 2. Standard Product
-      const prod = await Product.findById(item.productId);
+      const prod = await getProductDoc(item.productId);
       if (!prod) {
         throw new Error(`Product not found for ID: ${item.productId}`);
       }
@@ -113,21 +130,23 @@ const validateAndDeductStock = async (items) => {
         throw new Error(`Product '${prod.title}' is out of stock or has insufficient quantity. Available: ${variant.stock}`);
       }
       
-      stockUpdates.push({ product: prod, variant, quantity });
+      variant.stock -= quantity;
       reservationItems.push({
         productId: prod._id,
-        variantId: variant.id,
+        variantId: variant.id || variant._id?.toString(),
         quantity,
         title: prod.title
       });
     }
   }
 
-  // Deduct stock and save products
-  for (const update of stockUpdates) {
-    update.variant.stock -= update.quantity;
-    update.product.markModified('variants');
-    await update.product.save();
+  // Save all modified products in cache
+  for (const prodId of Object.keys(productCache)) {
+    const prodDoc = productCache[prodId];
+    if (prodDoc.isModified('variants')) {
+      prodDoc.markModified('variants');
+      await prodDoc.save();
+    }
   }
 
   return reservationItems;
@@ -478,3 +497,5 @@ exports.updateOrderStatus = async (req, res, next) => {
     next(err);
   }
 };
+
+exports.validateAndDeductStock = validateAndDeductStock;
