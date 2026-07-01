@@ -1,5 +1,29 @@
 const mongoose = require('mongoose');
 
+const comboReviewSchema = new mongoose.Schema({
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  name: {
+    type: String,
+    default: 'Anonymous'
+  },
+  rating: {
+    type: Number,
+    required: true,
+    min: 1,
+    max: 5
+  },
+  description: {
+    type: String,
+    default: ''
+  }
+}, {
+  timestamps: true 
+});
+
 const ComboPackSchema = new mongoose.Schema({
   name: {
     type: String,
@@ -51,7 +75,7 @@ const ComboPackSchema = new mongoose.Schema({
     default: 0
   },
   reviews: {
-    type: Array,
+    type: [comboReviewSchema], 
     default: []
   }
 }, {
