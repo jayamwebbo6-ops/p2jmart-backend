@@ -9,7 +9,12 @@ const connectDB = require('./src/config/db.js');
 const app = express();
 
 // Connect to Database
-connectDB();
+connectDB().then(() => {
+  const { startStockReservationCron } = require('./src/utils/cron.js');
+  startStockReservationCron();
+}).catch((err) => {
+  console.error('Failed to connect to database or start cron:', err);
+});
 
 // Global Environment Variables
 const BASE_URL = process.env.BASE_URL || 'p2jmart';

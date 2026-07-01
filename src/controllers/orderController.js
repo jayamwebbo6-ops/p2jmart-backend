@@ -1,9 +1,137 @@
 const Order = require('../models/Order');
 const CartItem = require('../models/CartItem');
+const Product = require('../models/Product');
+const ComboPack = require('../models/ComboPack');
+const StockReservation = require('../models/StockReservation');
 const { saveBase64Image, getImageUrl } = require('../utils/imageHelper');
 const { sendEmail } = require('../utils/emailHelper'); // Update path to your mail utility
 const User = require('../models/User'); // Update to your exact user model path
 const { getOrderConfirmationTemplate } = require('../utils/emailTemplate');
+
+// Helper to find matching variant based on selectedOptions
+const findMatchingVariant = (product, selectedOptions = {}) => {
+  if (!product.variants || product.variants.length === 0) return null;
+
+  // If no options are selected, default to the first variant
+  if (Object.keys(selectedOptions).length === 0) {
+    return product.variants[0];
+  }
+
+  const normStr = (s) => String(s || '').split('|')[0].trim().toLowerCase();
+
+  for (const variant of product.variants) {
+    const attrs = variant.attributes || {};
+    let match = true;
+
+    for (const [key, val] of Object.entries(attrs)) {
+      if (key === 'color' || key === 'size') {
+        const selectedVal = selectedOptions[key];
+        if (selectedVal && selectedVal !== 'Default' && selectedVal !== 'default' && normStr(selectedVal) !== normStr(val)) {
+          match = false;
+          break;
+        }
+      }
+    }
+
+    if (match) return variant;
+  }
+
+  return product.variants[0];
+};
+
+const validateAndDeductStock = async (items) => {
+  const stockUpdates = []; // stores { product, variant, quantity }
+  const reservationItems = []; // stores { productId, variantId, quantity, title }
+
+  for (const item of items) {
+    const quantity = Number(item.quantity) || 1;
+    
+    if (item.isComboProduct) {
+      // 1. Combo Product
+      // Check if it's a pre-defined ComboPack
+      const combo = await ComboPack.findById(item.productId);
+      if (combo && combo.selectedVariants && combo.selectedVariants.length > 0) {
+        for (const sv of combo.selectedVariants) {
+          const prod = await Product.findById(sv.productId);
+          if (!prod) continue;
+          
+          const variant = prod.variants.find(v => v.id === sv.variantId);
+          if (!variant) continue;
+          
+          const neededQty = quantity; // Each combo contains 1 of each product
+          if (variant.stock < neededQty) {
+            throw new Error(`Item '${prod.title}' inside Combo Pack is out of stock. Available: ${variant.stock}`);
+          }
+          
+          stockUpdates.push({ product: prod, variant, quantity: neededQty });
+          reservationItems.push({
+            productId: prod._id,
+            variantId: variant.id,
+            quantity: neededQty,
+            title: `${prod.title} (Combo Component)`
+          });
+        }
+      } else {
+        // Fallback for custom / dynamic combo packs
+        const included = item.includedProducts || [];
+        for (const subItem of included) {
+          const subId = subItem.productId || subItem.id || subItem._id;
+          const prod = await Product.findById(subId);
+          if (!prod) continue;
+          
+          // Custom combo subItem might not specify variantId, default to first variant
+          const variant = prod.variants && prod.variants.length > 0 ? prod.variants[0] : null;
+          if (!variant) continue;
+          
+          const neededQty = quantity;
+          if (variant.stock < neededQty) {
+            throw new Error(`Item '${prod.title}' inside custom pack is out of stock. Available: ${variant.stock}`);
+          }
+          
+          stockUpdates.push({ product: prod, variant, quantity: neededQty });
+          reservationItems.push({
+            productId: prod._id,
+            variantId: variant.id,
+            quantity: neededQty,
+            title: `${prod.title} (Custom Component)`
+          });
+        }
+      }
+    } else {
+      // 2. Standard Product
+      const prod = await Product.findById(item.productId);
+      if (!prod) {
+        throw new Error(`Product not found for ID: ${item.productId}`);
+      }
+      
+      const variant = findMatchingVariant(prod, item.selectedOptions);
+      if (!variant) {
+        throw new Error(`No available variant found for product: ${prod.title}`);
+      }
+      
+      if (variant.stock < quantity) {
+        throw new Error(`Product '${prod.title}' is out of stock or has insufficient quantity. Available: ${variant.stock}`);
+      }
+      
+      stockUpdates.push({ product: prod, variant, quantity });
+      reservationItems.push({
+        productId: prod._id,
+        variantId: variant.id,
+        quantity,
+        title: prod.title
+      });
+    }
+  }
+
+  // Deduct stock and save products
+  for (const update of stockUpdates) {
+    update.variant.stock -= update.quantity;
+    update.product.markModified('variants');
+    await update.product.save();
+  }
+
+  return reservationItems;
+};
 
 // Helper to map status to colors
 const getStatusColor = (status) => {
@@ -106,6 +234,16 @@ exports.createOrder = async (req, res, next) => {
       };
     });
 
+    // Validate and deduct stock, returning the locked items mapping
+    let reservationItems = [];
+    try {
+      reservationItems = await validateAndDeductStock(normalizedItems);
+    } catch (stockError) {
+      return res.status(400).json({ success: false, message: stockError.message });
+    }
+
+    const initialStatus = paymentStatus === 'paid' ? 'Processing' : 'Pending';
+
     const newOrder = await Order.create({
       user: req.user._id,
       orderId,
@@ -117,10 +255,19 @@ exports.createOrder = async (req, res, next) => {
       gst: Number(gst),
       shippingFee: Number(shippingFee),
       total: Number(total),
-      status: 'Processing',
-      statusColor: getStatusColor('Processing'),
+      status: initialStatus,
+      statusColor: getStatusColor(initialStatus),
       statusDate: new Date(),
       placedDate: new Date()
+    });
+
+    // Create Stock Reservation record
+    await StockReservation.create({
+      orderId: newOrder._id,
+      items: reservationItems,
+      status: paymentStatus,
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes from now
+      processed: false
     });
 
     // Clear user cart if not direct buy
