@@ -26,6 +26,10 @@ const ComboPackSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  returnPolicy: {
+    type: String,
+    default: 'No Return Policy'
+  },
   description: {
     type: String,
     default: ''

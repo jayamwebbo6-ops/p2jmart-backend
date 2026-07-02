@@ -1,0 +1,82 @@
+[
+  {
+    "_id": "6a45014be55673144d1e3944",
+    "name": "combo",
+    "offerPrice": 10000,
+    "totalPrice": 166498,
+    "status": true,
+    "category": "Electronics",
+    "subcategory": "Smart Phones",
+    "returnPolicy": "2 days",
+    "description": "",
+    "selectedItemIds": [
+      "6a3a24eb9307e3905113dc4c",
+      "6a3a24eb9307e3905113dc50"
+    ],
+    "selectedVariants": [
+      {
+        "productId": "6a3a24eb9307e3905113dc4c",
+        "variantId": "var-1782195435195-1-790",
+        "_id": "6a45014be55673144d1e3945"
+      },
+      {
+        "productId": "6a3a24eb9307e3905113dc4c",
+        "variantId": "var-1782195435198-2-734",
+        "_id": "6a45014be55673144d1e3946"
+      },
+      {
+        "productId": "6a3a24eb9307e3905113dc50",
+        "variantId": "var-1782195435246-1-68",
+        "_id": "6a45014be55673144d1e3947"
+      }
+    ],
+    "rating": 3,
+    "reviewCount": 1,
+    "reviews": [
+      {
+        "user": "6a3922025f0a249f106af39a",
+        "name": "JayamWeb Madhavan",
+        "rating": 3,
+        "description": "vfdgvdgvdrfg",
+        "_id": "6a450391fe7f4ef8f0d9b182",
+        "createdAt": "2026-07-01T12:09:53.758Z",
+        "updatedAt": "2026-07-01T12:09:53.758Z"
+      }
+    ],
+    "createdAt": "2026-07-01T12:00:11.331Z",
+    "updatedAt": "2026-07-01T12:09:53.758Z",
+    "__v": 1
+  },
+  {
+    "_id": "6a450485fe7f4ef8f0d9b225",
+    "name": "combo2",
+    "offerPrice": 25000,
+    "totalPrice": 85999,
+    "status": true,
+    "category": "Electronics",
+    "subcategory": "Smart Phones",
+    "description": "",
+    "selectedItemIds": [
+      "6a3a24eb9307e3905113dc4c",
+      "6a3a24eb9307e3905113dc50"
+    ],
+    "selectedVariants": [
+      {
+        "productId": "6a3a24eb9307e3905113dc4c",
+        "variantId": "var-1782195435195-1-790",
+        "_id": "6a450485fe7f4ef8f0d9b226"
+      },
+      {
+        "productId": "6a3a24eb9307e3905113dc50",
+        "variantId": "var-1782195435248-2-786",
+        "_id": "6a450485fe7f4ef8f0d9b227"
+      }
+    ],
+    "rating": 5,
+    "reviewCount": 0,
+    "reviews": [],
+    "createdAt": "2026-07-01T12:13:57.804Z",
+    "updatedAt": "2026-07-01T12:13:57.804Z",
+    "__v": 0
+  }
+]

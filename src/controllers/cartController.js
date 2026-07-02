@@ -5,7 +5,7 @@ const normalizeCartItem = (item) => {
   const product = item.productId;
   // Get valid relative path or URL, checking if file exists on disk and falling back to variant if not
   const resolvedPath = getValidProductImage(item.image, product);
-  
+
   const normalized = {
     ...item,
     id: item._id,
