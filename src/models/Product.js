@@ -7,9 +7,31 @@ const reviewSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
-  name: { type: String, required: true },
-  rating: { type: Number, required: true, min: 1, max: 5 },
-  description: { type: String, required: true },
+  name: {
+    type: String,
+    required: true
+  },
+
+  orderId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Order',
+    required: true
+  },
+  orderItemId: {
+    type: mongoose.Schema.Types.ObjectId,
+    required: true
+  },
+
+  rating: {
+    type: Number,
+    required: true,
+    min: 1,
+    max: 5
+  },
+  description: {
+    type: String,
+    required: true
+  }
 }, { timestamps: true });
 
 
@@ -60,14 +82,6 @@ const ProductSchema = new mongoose.Schema({
     type: String,
     enum: ['Yes', 'No'],
     default: 'No'
-  },
-  rating: {
-    type: Number,
-    default: 5
-  },
-  reviews: {
-    type: Number,
-    default: 0
   },
   selectedAttributes: {
     type: mongoose.Schema.Types.Mixed,

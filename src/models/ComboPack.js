@@ -10,6 +10,18 @@ const comboReviewSchema = new mongoose.Schema({
     type: String,
     default: 'Anonymous'
   },
+
+  // ADD THESE 2 FIELDS
+  orderId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Order',
+    required: true
+  },
+  orderItemId: {
+    type: mongoose.Schema.Types.ObjectId,
+    required: true
+  },
+
   rating: {
     type: Number,
     required: true,
@@ -21,7 +33,7 @@ const comboReviewSchema = new mongoose.Schema({
     default: ''
   }
 }, {
-  timestamps: true 
+  timestamps: true
 });
 
 const ComboPackSchema = new mongoose.Schema({

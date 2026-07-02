@@ -115,85 +115,139 @@ const Combo = require('../models/ComboPack');
 
 exports.addProductReview = async (req, res) => {
   try {
-    const { productId, rating, description } = req.body; // isCombo no longer needed from client
+    const { productId, orderId, orderItemId, rating, description, isCombo } = req.body;
 
     const rawUserId = req.user?._id || req.user?.id || req.userId;
     if (!rawUserId) {
-      return res.status(401).json({ success: false, message: "User context not identified. Please log in again." });
+      return res.status(401).json({
+        success: false,
+        message: "User context not identified. Please log in again."
+      });
     }
-    if (!productId) {
-      return res.status(400).json({ success: false, message: "Product/Combo ID is missing from request payload." });
+
+    if (!productId || !orderId || !orderItemId || !rating || !description) {
+      return res.status(400).json({
+        success: false,
+        message: "productId, orderId, orderItemId, rating and description are required."
+      });
     }
 
     const userObjectId = new mongoose.Types.ObjectId(rawUserId);
     const targetObjectId = new mongoose.Types.ObjectId(productId);
+    const orderObjectId = new mongoose.Types.ObjectId(orderId);
+    const orderItemObjectId = new mongoose.Types.ObjectId(orderItemId);
 
-    let targetDoc = await Product.findById(targetObjectId);
-    let isCombo = false;
-
-    if (!targetDoc) {
-      targetDoc = await Combo.findById(targetObjectId);
-      isCombo = true;
-    }
-
-    if (!targetDoc) {
-      return res.status(404).json({ success: false, message: "Product or Combo Pack not found." });
-    }
-
-    const deliveredOrders = await Order.find({
+    // 1) Verify order belongs to this user and is delivered
+    const order = await Order.findOne({
+      _id: orderObjectId,
       user: userObjectId,
-      status: { $regex: /^delivered$/i }
+      status: { $regex: /^delivered$/i },
+      "items._id": orderItemObjectId
     });
 
-    const hasPurchasedAndDelivered = deliveredOrders.some(order =>
-      order.items && order.items.some(item => {
-        const itemIdStr = (item.productId || item.comboId || item._id)?.toString();
-        return itemIdStr === targetObjectId.toString();
-      })
-    );
-
-    if (!hasPurchasedAndDelivered) {
+    if (!order) {
       return res.status(400).json({
         success: false,
-        message: "You can only review items you purchased that have been delivered."
+        message: "You can only review items from your delivered orders."
       });
     }
 
-    // 3. Normalize the review array field name per schema
-    const reviewField = isCombo ? 'reviews' : 'reviewList'; 
+    const orderedItem = order.items.id(orderItemObjectId);
+    if (!orderedItem) {
+      return res.status(404).json({
+        success: false,
+        message: "Order item not found."
+      });
+    }
+
+    // 2) Decide Product vs Combo from payload
+    let targetDoc = null;
+    let comboMode = Boolean(isCombo);
+
+    if (comboMode) {
+      targetDoc = await Combo.findById(targetObjectId);
+    } else {
+      targetDoc = await Product.findById(targetObjectId);
+    }
+
+    // fallback safety if payload flag is wrong
+    if (!targetDoc) {
+      targetDoc = await Product.findById(targetObjectId);
+      comboMode = false;
+    }
+    if (!targetDoc) {
+      targetDoc = await Combo.findById(targetObjectId);
+      comboMode = true;
+    }
+
+    if (!targetDoc) {
+      return res.status(404).json({
+        success: false,
+        message: "Product or Combo Pack not found."
+      });
+    }
+
+    const reviewField = comboMode ? "reviews" : "reviewList";
     if (!targetDoc[reviewField]) targetDoc[reviewField] = [];
 
+    // 3) IMPORTANT: find review by user + orderItemId
     const existingReviewIndex = targetDoc[reviewField].findIndex(
-      (rev) => rev.user && rev.user.toString() === userObjectId.toString()
+      (rev) =>
+        rev.user &&
+        rev.user.toString() === userObjectId.toString() &&
+        rev.orderItemId &&
+        rev.orderItemId.toString() === orderItemObjectId.toString()
     );
 
     let serverMessage = "Review posted successfully!";
+    let savedReview = null;
 
     if (existingReviewIndex !== -1) {
       const existingReview = targetDoc[reviewField][existingReviewIndex];
-      const daysSinceReview = (new Date() - new Date(existingReview.createdAt || new Date())) / (1000 * 60 * 60 * 24);
+      const daysSinceReview =
+        (new Date() - new Date(existingReview.createdAt || new Date())) /
+        (1000 * 60 * 60 * 24);
 
       if (daysSinceReview > 30) {
-        return res.status(400).json({ success: false, message: "Reviews can only be edited within 30 days of posting." });
+        return res.status(400).json({
+          success: false,
+          message: "Reviews can only be edited within 30 days of posting."
+        });
       }
 
       targetDoc[reviewField][existingReviewIndex].rating = Number(rating);
       targetDoc[reviewField][existingReviewIndex].description = description;
-      targetDoc[reviewField][existingReviewIndex].name = req.user?.name || existingReview.name || "Anonymous";
+      targetDoc[reviewField][existingReviewIndex].name =
+        req.user?.name || existingReview.name || "Anonymous";
+
+      savedReview = targetDoc[reviewField][existingReviewIndex];
       serverMessage = "Review updated successfully!";
     } else {
-      targetDoc[reviewField].push({
+      console.log("REQ BODY REVIEW ADD:", req.body);
+      console.log("REVIEW PAYLOAD:")
+      const reviewPayload = {
         user: userObjectId,
         name: req.user?.name || "Anonymous",
+        orderId: orderObjectId,
+        orderItemId: orderItemObjectId,
         rating: Number(rating),
         description
-      });
+      };
+      console.log("REVIEW PAYLOAD after:")
+
+      targetDoc[reviewField].push(reviewPayload);
+      savedReview = targetDoc[reviewField][targetDoc[reviewField].length - 1];
     }
 
+    // 4) recalc rating + count
     const totalReviewsCount = targetDoc[reviewField].length;
-    targetDoc.rating = targetDoc[reviewField].reduce((acc, item) => item.rating + acc, 0) / totalReviewsCount;
 
-    if (isCombo) {
+    targetDoc.rating =
+      totalReviewsCount > 0
+        ? targetDoc[reviewField].reduce((acc, item) => item.rating + acc, 0) / totalReviewsCount
+        : 0;
+
+    if (comboMode) {
       targetDoc.reviewCount = totalReviewsCount;
     } else {
       targetDoc.reviews = totalReviewsCount;
@@ -201,60 +255,89 @@ exports.addProductReview = async (req, res) => {
 
     await targetDoc.save();
 
-    return res.status(200).json({ success: true, message: serverMessage });
-
+    return res.status(200).json({
+      success: true,
+      message: serverMessage,
+      data: savedReview
+    });
   } catch (error) {
     console.error("Backend Combo/Product Review Error:", error);
-    return res.status(500).json({ success: false, message: error.message || "Internal server error" });
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Internal server error"
+    });
   }
 };
 
 // 8. Edit Existing Product Review
 exports.editProductReview = async (req, res) => {
   try {
-    const { productId, rating, description } = req.body;
+    const { productId, orderId, orderItemId, rating, description, isCombo } = req.body;
 
     const rawUserId = req.user?._id || req.user?.id || req.userId;
     if (!rawUserId) {
-      return res.status(401).json({ success: false, message: "User context not identified. Please log in again." });
+      return res.status(401).json({
+        success: false,
+        message: "User context not identified. Please log in again."
+      });
     }
-    if (!productId) {
-      return res.status(400).json({ success: false, message: "Product ID is missing from request payload." });
+
+    if (!productId || !orderId || !orderItemId) {
+      return res.status(400).json({
+        success: false,
+        message: "productId, orderId and orderItemId are required."
+      });
     }
 
     const userObjectId = new mongoose.Types.ObjectId(rawUserId);
     const targetObjectId = new mongoose.Types.ObjectId(productId);
+    const orderItemObjectId = new mongoose.Types.ObjectId(orderItemId);
 
-    // 🟢 Self-detect Product vs Combo
-    let targetDoc = await Product.findById(targetObjectId);
-    let isCombo = false;
+    let targetDoc = null;
+    let comboMode = Boolean(isCombo);
 
+    if (comboMode) {
+      targetDoc = await Combo.findById(targetObjectId);
+    } else {
+      targetDoc = await Product.findById(targetObjectId);
+    }
+
+    if (!targetDoc) {
+      targetDoc = await Product.findById(targetObjectId);
+      comboMode = false;
+    }
     if (!targetDoc) {
       targetDoc = await Combo.findById(targetObjectId);
-      isCombo = true;
+      comboMode = true;
     }
 
     if (!targetDoc) {
-      return res.status(404).json({ success: false, message: "Product or Combo Pack not found." });
+      return res.status(404).json({
+        success: false,
+        message: "Product or Combo Pack not found."
+      });
     }
 
-    // 🟢 Use correct array field per schema
-    const reviewField = isCombo ? 'reviews' : 'reviewList';
-
-    if (!targetDoc[reviewField] || targetDoc[reviewField].length === 0) {
-      return res.status(400).json({ success: false, message: "No reviews found for this item." });
-    }
-
+    const reviewField = comboMode ? "reviews" : "reviewList";
     const reviewIndex = targetDoc[reviewField].findIndex(
-      (rev) => rev.user && rev.user.toString() === userObjectId.toString()
+      (rev) =>
+        rev.user &&
+        rev.user.toString() === userObjectId.toString() &&
+        rev.orderItemId &&
+        rev.orderItemId.toString() === orderItemObjectId.toString()
     );
 
     if (reviewIndex === -1) {
-      return res.status(404).json({ success: false, message: "Your review was not found on this item." });
+      return res.status(404).json({
+        success: false,
+        message: "Your review was not found for this order item."
+      });
     }
 
     const existingReview = targetDoc[reviewField][reviewIndex];
-    const daysSinceReview = (new Date() - new Date(existingReview.createdAt || new Date())) / (1000 * 60 * 60 * 24);
+    const daysSinceReview =
+      (new Date() - new Date(existingReview.createdAt || new Date())) /
+      (1000 * 60 * 60 * 24);
 
     if (daysSinceReview > 30) {
       return res.status(400).json({
@@ -265,12 +348,16 @@ exports.editProductReview = async (req, res) => {
 
     targetDoc[reviewField][reviewIndex].rating = Number(rating);
     targetDoc[reviewField][reviewIndex].description = description;
-    targetDoc[reviewField][reviewIndex].name = req.user?.name || existingReview.name || "Anonymous";
+    targetDoc[reviewField][reviewIndex].name =
+      req.user?.name || existingReview.name || "Anonymous";
 
     const totalReviewsCount = targetDoc[reviewField].length;
-    targetDoc.rating = targetDoc[reviewField].reduce((acc, item) => item.rating + acc, 0) / totalReviewsCount;
+    targetDoc.rating =
+      totalReviewsCount > 0
+        ? targetDoc[reviewField].reduce((acc, item) => item.rating + acc, 0) / totalReviewsCount
+        : 0;
 
-    if (isCombo) {
+    if (comboMode) {
       targetDoc.reviewCount = totalReviewsCount;
     } else {
       targetDoc.reviews = totalReviewsCount;
@@ -280,75 +367,128 @@ exports.editProductReview = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Review updated successfully!"
+      message: "Review updated successfully!",
+      data: targetDoc[reviewField][reviewIndex]
     });
-
   } catch (error) {
     console.error("Backend Edit Review Error:", error);
-    return res.status(500).json({ success: false, message: error.message || "Internal server error" });
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Internal server error"
+    });
   }
 };
 
 
-// 9. Delete Product Review
 exports.deleteProductReview = async (req, res) => {
   try {
-    const { productId } = req.body; // or req.params.productId depending on routing style
-    
-    // Safety Guard: Extract and verify User ID context
+    const { productId, orderId, orderItemId, isCombo } = req.body;
+
     const rawUserId = req.user?._id || req.user?.id || req.userId;
     if (!rawUserId) {
-      return res.status(401).json({ 
-        success: false, 
-        message: "User context not identified. Please log in again." 
+      return res.status(401).json({
+        success: false,
+        message: "User context not identified. Please log in again."
       });
     }
 
-    if (!productId) {
-      return res.status(400).json({ success: false, message: "Product ID is missing from request payload." });
+    if (!productId || !orderItemId) {
+      return res.status(400).json({
+        success: false,
+        message: "productId and orderItemId are required."
+      });
     }
 
     const userObjectId = new mongoose.Types.ObjectId(rawUserId);
-    const productObjectId = new mongoose.Types.ObjectId(productId);
+    const targetObjectId = new mongoose.Types.ObjectId(productId);
+    const orderItemObjectId = new mongoose.Types.ObjectId(orderItemId);
 
-    // Fetch Product document
-    const product = await Product.findById(productObjectId);
-    if (!product) {
-      return res.status(404).json({ success: false, message: "Product not found." });
+    let targetDoc = null;
+    let comboMode = Boolean(isCombo);
+
+    if (comboMode) {
+      targetDoc = await Combo.findById(targetObjectId);
+    } else {
+      targetDoc = await Product.findById(targetObjectId);
     }
 
-    if (!product.reviewList || product.reviewList.length === 0) {
-      return res.status(400).json({ success: false, message: "No reviews exist on this item." });
+    if (!targetDoc) {
+      targetDoc = await Product.findById(targetObjectId);
+      comboMode = false;
+    }
+    if (!targetDoc) {
+      targetDoc = await Combo.findById(targetObjectId);
+      comboMode = true;
     }
 
-    // Check if the user actually has a review to pull
-    const initialLength = product.reviewList.length;
-    product.reviewList = product.reviewList.filter(
-      (rev) => rev.user && rev.user.toString() !== userObjectId.toString()
+    if (!targetDoc) {
+      return res.status(404).json({
+        success: false,
+        message: "Product or Combo Pack not found."
+      });
+    }
+
+    const reviewField = comboMode ? "reviews" : "reviewList";
+    if (!targetDoc[reviewField] || targetDoc[reviewField].length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No reviews exist on this item."
+      });
+    }
+
+    const reviewIndex = targetDoc[reviewField].findIndex(
+      (rev) =>
+        rev.user &&
+        rev.user.toString() === userObjectId.toString() &&
+        rev.orderItemId &&
+        rev.orderItemId.toString() === orderItemObjectId.toString()
     );
 
-    if (product.reviewList.length === initialLength) {
-      return res.status(404).json({ success: false, message: "No active review found under your user account for this product." });
+    if (reviewIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        message: "No active review found for this order item."
+      });
     }
 
-    // Recalculate summary metrics or gracefully default to zero if empty
-    product.reviews = product.reviewList.length;
-    if (product.reviewList.length > 0) {
-      product.rating = product.reviewList.reduce((acc, item) => item.rating + acc, 0) / product.reviewList.length;
+    const existingReview = targetDoc[reviewField][reviewIndex];
+    const daysSinceReview =
+      (new Date() - new Date(existingReview.createdAt || new Date())) /
+      (1000 * 60 * 60 * 24);
+
+    if (daysSinceReview > 30) {
+      return res.status(400).json({
+        success: false,
+        message: "Reviews can only be deleted within 30 days of posting."
+      });
+    }
+
+    targetDoc[reviewField].splice(reviewIndex, 1);
+
+    const totalReviewsCount = targetDoc[reviewField].length;
+    targetDoc.rating =
+      totalReviewsCount > 0
+        ? targetDoc[reviewField].reduce((acc, item) => item.rating + acc, 0) / totalReviewsCount
+        : 0;
+
+    if (comboMode) {
+      targetDoc.reviewCount = totalReviewsCount;
     } else {
-      product.rating = 0; // Fallback default when no reviews are left
+      targetDoc.reviews = totalReviewsCount;
     }
 
-    await product.save();
+    await targetDoc.save();
 
     return res.status(200).json({
       success: true,
       message: "Review removed successfully."
     });
-
   } catch (error) {
     console.error("Backend Delete Review Error:", error);
-    return res.status(500).json({ success: false, message: error.message || "Internal server error" });
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Internal server error"
+    });
   }
 };
 
@@ -357,48 +497,74 @@ exports.deleteProductReview = async (req, res) => {
 // 10. Get Product Reviews (+ flag current user's own review)
 // 
 
-// 10. Get Product/Combo Reviews (+ flag current user's own review)
 exports.getProductReviews = async (req, res) => {
   try {
     const { productId } = req.params;
+    const { orderId, orderItemId, isCombo } = req.query;
 
     if (!productId || !mongoose.Types.ObjectId.isValid(productId)) {
-      return res.status(400).json({ success: false, message: "A valid ID is required." });
+      return res.status(400).json({
+        success: false,
+        message: "A valid ID is required."
+      });
     }
 
-    const targetObjectId = new mongoose.Types.ObjectId(productId); // 🟢 define it
+    const targetObjectId = new mongoose.Types.ObjectId(productId);
 
-    // 1. Try fetching from standard Product collection first
-    let targetDoc = await Product.findById(targetObjectId);
-    let isCombo = false;
+    let targetDoc = null;
+    let comboMode = isCombo === "true";
 
+    if (comboMode) {
+      targetDoc = await Combo.findById(targetObjectId);
+    } else {
+      targetDoc = await Product.findById(targetObjectId);
+    }
+
+    if (!targetDoc) {
+      targetDoc = await Product.findById(targetObjectId);
+      comboMode = false;
+    }
     if (!targetDoc) {
       targetDoc = await Combo.findById(targetObjectId);
-      isCombo = true;
+      comboMode = true;
     }
 
     if (!targetDoc) {
-      return res.status(404).json({ success: false, message: "Product or Combo Pack not found." });
+      return res.status(404).json({
+        success: false,
+        message: "Product or Combo Pack not found."
+      });
     }
 
-    // Normalize review lists between the different schema shapes safely
-    const reviewList = targetDoc.reviewList || targetDoc.reviews || [];
+    const reviewList = comboMode ? (targetDoc.reviews || []) : (targetDoc.reviewList || []);
     const rawUserId = req.user?._id || req.user?.id || req.userId;
 
-    const myReview = rawUserId
-      ? reviewList.find(rev => rev.user && rev.user.toString() === rawUserId.toString())
-      : null;
+    let myReview = null;
+
+    if (rawUserId && orderItemId) {
+      myReview =
+        reviewList.find(
+          (rev) =>
+            rev.user &&
+            rev.user.toString() === rawUserId.toString() &&
+            rev.orderItemId &&
+            rev.orderItemId.toString() === orderItemId.toString()
+        ) || null;
+    }
 
     return res.status(200).json({
       success: true,
       data: {
         reviews: Array.isArray(reviewList) ? reviewList : [],
-        myReview: myReview || null,
-        isCombo // 🟢 handy for the client if it wants to know which model this came from
+        myReview,
+        isCombo: comboMode
       }
     });
   } catch (error) {
     console.error("Backend Get Reviews Error:", error);
-    return res.status(500).json({ success: false, message: error.message || "Internal server error" });
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Internal server error"
+    });
   }
 };
