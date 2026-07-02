@@ -45,6 +45,7 @@ exports.sendOTP = async (req, res, next) => {
     const emailText = `Your temporary login code is ${otp}. It will expire in 5 minutes.`;
     
     await sendEmail(lowerEmail, emailSubject, emailText);
+    console.log("[TEST OTP] Code sent to", lowerEmail, "is:", otp);
 
     return res.status(200).json({
       success: true,
