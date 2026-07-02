@@ -1,0 +1,74 @@
+[
+  {
+    "_id": "6a3a24eb9307e3905113dc4a",
+    "name": "Electronics",
+    "image": "uploads/categories/category-1782818916513-47999984.webp",
+    "supportedAttributes": [
+      "6a3a24eb9307e3905113dc48",
+      "6a3a24eb9307e3905113dc49"
+    ],
+    "createdAt": "2026-06-23T06:17:15.123Z",
+    "updatedAt": "2026-06-30T11:28:36.515Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a3a24eb9307e3905113dc5d",
+    "name": "Fashion Jewellery",
+    "image": "uploads/categories/category-1782818908303-707413220.webp",
+    "supportedAttributes": [
+      "6a3a24eb9307e3905113dc48",
+      "6a3a24eb9307e3905113dc49"
+    ],
+    "createdAt": "2026-06-23T06:17:15.426Z",
+    "updatedAt": "2026-06-30T11:28:28.305Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a3a24eb9307e3905113dc70",
+    "name": "Electrical",
+    "image": "uploads/categories/category-1782813929134-747493995.webp",
+    "supportedAttributes": [
+      "6a3a24eb9307e3905113dc48",
+      "6a3a24eb9307e3905113dc49"
+    ],
+    "createdAt": "2026-06-23T06:17:15.729Z",
+    "updatedAt": "2026-06-30T10:05:29.143Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a3a24ec9307e3905113dc83",
+    "name": "Furniture",
+    "image": "uploads/categories/category-1782813939925-286481413.webp",
+    "supportedAttributes": [
+      "6a3a24eb9307e3905113dc48",
+      "6a3a24eb9307e3905113dc49"
+    ],
+    "createdAt": "2026-06-23T06:17:16.027Z",
+    "updatedAt": "2026-06-30T10:05:39.935Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a3a24ec9307e3905113dc96",
+    "name": "Gift Items",
+    "image": "uploads/categories/category-1782813951124-595948596.webp",
+    "supportedAttributes": [
+      "6a3a24eb9307e3905113dc48",
+      "6a3a24eb9307e3905113dc49"
+    ],
+    "createdAt": "2026-06-23T06:17:16.349Z",
+    "updatedAt": "2026-06-30T10:05:51.125Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a3a24ed9307e3905113dca9",
+    "name": "Pet Supplies",
+    "image": "uploads/categories/category-1782813959523-961285014.webp",
+    "supportedAttributes": [
+      "6a3a24eb9307e3905113dc48",
+      "6a3a24eb9307e3905113dc49"
+    ],
+    "createdAt": "2026-06-23T06:17:17.545Z",
+    "updatedAt": "2026-06-30T10:05:59.526Z",
+    "__v": 0
+  }
+]

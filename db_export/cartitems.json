@@ -1,0 +1,62 @@
+[
+  {
+    "_id": "6a3f9adce4310456e3f56db0",
+    "user": "6a3922025f0a249f106af39a",
+    "productId": "6a3a24eb9307e3905113dc4c",
+    "title": "Pro Max Ultra Phone",
+    "price": 50000,
+    "quantity": 1,
+    "image": "http://localhost:5000/api/uploads/products/variant-0-img-0-1782466268494-55545937.webp",
+    "selectedOptions": {
+      "color": "Orange",
+      "size": "Medium"
+    },
+    "isComboProduct": false,
+    "includedProducts": [],
+    "weight": 0,
+    "category": "Catalog",
+    "createdAt": "2026-06-27T09:41:48.421Z",
+    "updatedAt": "2026-06-27T09:41:48.421Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a3f9ccbe4310456e3f56ea2",
+    "user": "6a3922025f0a249f106af39a",
+    "productId": "6a3a24eb9307e3905113dc55",
+    "title": "Acoustic Noise-Cancelling Headphones",
+    "price": 1800,
+    "quantity": 1,
+    "image": "http://localhost:5000/api/uploads/products/variant-0-img-0-1782474960947-879884932.webp",
+    "selectedOptions": {
+      "color": "Beige",
+      "size": "Medium"
+    },
+    "isComboProduct": false,
+    "includedProducts": [],
+    "weight": 0,
+    "category": "Catalog",
+    "createdAt": "2026-06-27T09:50:03.227Z",
+    "updatedAt": "2026-06-27T09:50:03.227Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a4368ecdfa186654da16267",
+    "user": "6a3cffb226f82733046a39e3",
+    "productId": "6a3a24eb9307e3905113dc59",
+    "title": "Bass Boost Wireless Earbuds",
+    "price": 4999,
+    "quantity": 1,
+    "image": "http://localhost:5000/api/uploads/products/variant-0-img-0-1782475512441-186461427.webp",
+    "selectedOptions": {
+      "color": "Red|#EF4444",
+      "size": "Small"
+    },
+    "isComboProduct": false,
+    "includedProducts": [],
+    "weight": 2,
+    "category": "Electronics",
+    "createdAt": "2026-06-30T06:57:48.967Z",
+    "updatedAt": "2026-06-30T06:57:48.967Z",
+    "__v": 0
+  }
+]

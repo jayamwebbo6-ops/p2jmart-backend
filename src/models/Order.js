@@ -51,6 +51,35 @@ const OrderSchema = new mongoose.Schema(
         weight: {
           type: Number,
           default: 0
+        },
+        returnPolicy: {
+          type: String,
+          default: 'No Return Policy'
+        },
+        returnStatus: {
+          type: String,
+          enum: ['None', 'Return Requested', 'Return Approved', 'Return Rejected', 'Returned & Refunded'],
+          default: 'None'
+        },
+        returnReason: {
+          type: String,
+          default: ''
+        },
+        returnPhoto: {
+          type: String,
+          default: ''
+        },
+        returnRequestDate: {
+          type: Date
+        },
+        parcelReceived: {
+          type: Boolean,
+          default: false
+        },
+        refundStatus: {
+          type: String,
+          enum: ['None', 'Pending', 'Refunded'],
+          default: 'None'
         }
       }
     ],
@@ -112,6 +141,9 @@ const OrderSchema = new mongoose.Schema(
     placedDate: {
       type: Date,
       default: Date.now
+    },
+    deliveredAt: {
+      type: Date
     }
   },
   {

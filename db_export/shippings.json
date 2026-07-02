@@ -1,0 +1,24 @@
+[
+  {
+    "_id": "6a3cc4ab4bc296289e69f911",
+    "stateName": "tamil nadu",
+    "baseWeight": 300,
+    "baseCost": 50,
+    "additionalWeight": 200,
+    "additionalCost": 20,
+    "createdAt": "2026-06-25T06:03:23.962Z",
+    "updatedAt": "2026-06-25T06:03:23.962Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a3cc4cb4bc296289e69f912",
+    "stateName": "kerala",
+    "baseWeight": 500,
+    "baseCost": 1000,
+    "additionalWeight": 250,
+    "additionalCost": 30,
+    "createdAt": "2026-06-25T06:03:55.767Z",
+    "updatedAt": "2026-06-25T06:03:55.767Z",
+    "__v": 0
+  }
+]

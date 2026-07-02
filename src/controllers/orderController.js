@@ -170,7 +170,7 @@ const getStatusColor = (status) => {
   }
 };
 
-// Helper to format order response and resolve customImage URLs to public domain
+// Helper to format order response and resolve customImage and returnPhoto URLs to public domain
 const formatOrderResponse = (order) => {
   if (!order) return null;
   const isLean = !order.toObject;
@@ -191,6 +191,13 @@ const formatOrderResponse = (order) => {
               ? getImageUrl(formattedItem.selectedOptions.customization.image)
               : ''
           };
+        }
+      }
+      if (formattedItem.returnPhoto) {
+        if (formattedItem.returnPhoto.includes(',')) {
+          formattedItem.returnPhoto = formattedItem.returnPhoto.split(',').map(img => getImageUrl(img)).join(',');
+        } else {
+          formattedItem.returnPhoto = getImageUrl(formattedItem.returnPhoto);
         }
       }
       return formattedItem;
@@ -228,7 +235,7 @@ exports.createOrder = async (req, res, next) => {
     const orderId = `ORD-${Date.now().toString().slice(-4)}-${randomNum}`;
 
     // Normalize items
-    const normalizedItems = items.map((item) => {
+    const normalizedItems = await Promise.all(items.map(async (item) => {
       const selectedOptions = { ...item.selectedOptions };
       if (selectedOptions.customImage) {
         selectedOptions.customImage = saveBase64Image(selectedOptions.customImage, 'customization', 'custom-img');
@@ -240,6 +247,24 @@ exports.createOrder = async (req, res, next) => {
         }
       }
 
+      let returnPolicy = 'No Return Policy';
+      try {
+        const prodId = item.productId || item.id || item._id;
+        if (item.isComboProduct) {
+          const dbCombo = await ComboPack.findById(prodId);
+          if (dbCombo && dbCombo.returnPolicy) {
+            returnPolicy = dbCombo.returnPolicy;
+          }
+        } else {
+          const dbProd = await Product.findById(prodId);
+          if (dbProd && dbProd.returnPolicy) {
+            returnPolicy = dbProd.returnPolicy;
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching product return policy:', err);
+      }
+
       return {
         productId: item.productId || item.id || item._id,
         title: item.title || item.name,
@@ -249,9 +274,10 @@ exports.createOrder = async (req, res, next) => {
         selectedOptions,
         isComboProduct: Boolean(item.isComboProduct),
         includedProducts: item.includedProducts || [],
-        weight: Number(item.weight || 0)
+        weight: Number(item.weight || 0),
+        returnPolicy
       };
-    });
+    }));
 
     // Validate and deduct stock, returning the locked items mapping
     let reservationItems = [];
@@ -423,6 +449,51 @@ exports.getAdminOrders = async (req, res, next) => {
   }
 };
 
+// Get all return requests (Admin only)
+exports.getAdminReturnRequests = async (req, res, next) => {
+  try {
+    const orders = await Order.find({
+      'items.returnStatus': { $ne: 'None' }
+    })
+    .populate('user', 'name email phone')
+    .sort({ updatedAt: -1 })
+    .lean();
+
+    const returnRequests = [];
+    orders.forEach(order => {
+      order.items.forEach(item => {
+        if (item.returnStatus && item.returnStatus !== 'None') {
+          returnRequests.push({
+            orderId: order._id,
+            orderCode: order.orderId,
+            itemId: item._id,
+            productName: item.title,
+            image: item.image,
+            quantity: item.quantity,
+            price: item.price,
+            userName: order.user?.name || order.shippingAddress?.fullName || 'Guest',
+            mobileNo: order.shippingAddress?.phone || order.user?.phone || '',
+            address: `${order.shippingAddress?.streetAddress}, ${order.shippingAddress?.city}, ${order.shippingAddress?.state} - ${order.shippingAddress?.postalCode}`,
+            returnStatus: item.returnStatus,
+            returnReason: item.returnReason,
+            returnPhoto: item.returnPhoto ? (item.returnPhoto.includes(',') ? item.returnPhoto.split(',').map(img => getImageUrl(img)).join(',') : getImageUrl(item.returnPhoto)) : '',
+            returnRequestDate: item.returnRequestDate,
+            parcelReceived: item.parcelReceived,
+            refundStatus: item.refundStatus
+          });
+        }
+      });
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: returnRequests
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // Update order status (Admin only)
 exports.updateOrderStatus = async (req, res, next) => {
   try {
@@ -463,11 +534,18 @@ exports.updateOrderStatus = async (req, res, next) => {
       });
     }
 
-    const statusOrderMap = { 'Pending': 0, 'Processing': 1, 'Shipped': 2, 'Delivered': 3 };
-    if (statusOrderMap[status] < statusOrderMap[order.status]) {
+    const allowedTransitions = {
+      'Pending': ['Pending', 'Processing'],
+      'Processing': ['Processing', 'Shipped'],
+      'Shipped': ['Shipped', 'Delivered'],
+      'Delivered': ['Delivered'],
+      'Cancelled': ['Cancelled']
+    };
+
+    if (!allowedTransitions[order.status] || !allowedTransitions[order.status].includes(status)) {
       return res.status(400).json({
         success: false,
-        message: `Cannot revert status from ${order.status} to ${status}`
+        message: `Cannot transition order status directly from ${order.status} to ${status}`
       });
     }
 
@@ -486,11 +564,236 @@ exports.updateOrderStatus = async (req, res, next) => {
     order.status = status;
     order.statusColor = getStatusColor(status);
     order.statusDate = new Date();
+    if (status === 'Delivered') {
+      order.deliveredAt = new Date();
+    }
     await order.save();
 
     return res.status(200).json({
       success: true,
       message: `Order status updated to ${status}`,
+      data: formatOrderResponse(order)
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Request return for a specific order item
+exports.requestItemReturn = async (req, res, next) => {
+  try {
+    const { returnReason, returnPhoto } = req.body;
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    if (order.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+
+    if (order.status !== 'Delivered') {
+      return res.status(400).json({ success: false, message: 'Only delivered orders can be returned' });
+    }
+
+    const item = order.items.find(i => i._id.toString() === req.params.itemId || i.productId?.toString() === req.params.itemId);
+    if (!item) {
+      return res.status(404).json({ success: false, message: 'Item not found in order' });
+    }
+
+    if (item.returnStatus !== 'None') {
+      return res.status(400).json({ success: false, message: 'Return already requested or processed for this item' });
+    }
+
+    if (!item.returnPolicy || item.returnPolicy === 'No Return Policy' || item.returnPolicy === 'Select Return Days') {
+      return res.status(400).json({ success: false, message: 'This item is not eligible for returns' });
+    }
+
+    const match = item.returnPolicy.match(/^(\d+)\s+day/i);
+    if (!match) {
+      return res.status(400).json({ success: false, message: 'Invalid return policy configuration' });
+    }
+    const returnWindowDays = parseInt(match[1], 10);
+    const deliveredTime = order.deliveredAt || order.statusDate || order.updatedAt;
+    const elapsedDays = (Date.now() - new Date(deliveredTime).getTime()) / (1000 * 60 * 60 * 24);
+    if (elapsedDays > returnWindowDays) {
+      return res.status(400).json({ success: false, message: `Return window of ${returnWindowDays} days has expired` });
+    }
+
+    let photoPaths = [];
+    if (returnPhoto) {
+      if (Array.isArray(returnPhoto)) {
+        photoPaths = returnPhoto.map(photo => saveBase64Image(photo, 'returns', 'return-proof'));
+      } else if (typeof returnPhoto === 'string' && returnPhoto.includes(',')) {
+        if (returnPhoto.startsWith('data:image')) {
+          photoPaths = [saveBase64Image(returnPhoto, 'returns', 'return-proof')];
+        } else {
+          photoPaths = returnPhoto.split(',').map(photo => saveBase64Image(photo, 'returns', 'return-proof'));
+        }
+      } else {
+        photoPaths = [saveBase64Image(returnPhoto, 'returns', 'return-proof')];
+      }
+    }
+
+    item.returnStatus = 'Return Requested';
+    item.returnReason = returnReason || '';
+    item.returnPhoto = photoPaths.filter(Boolean).join(',');
+    item.returnRequestDate = new Date();
+    item.refundStatus = 'Pending';
+
+    await order.save();
+    return res.status(200).json({
+      success: true,
+      message: 'Return request submitted successfully',
+      data: formatOrderResponse(order)
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Admin: Review return request (approve/reject)
+exports.adminReviewReturn = async (req, res, next) => {
+  try {
+    const { action } = req.body;
+    if (!['approve', 'reject'].includes(action)) {
+      return res.status(400).json({ success: false, message: 'Invalid action. Must be approve or reject' });
+    }
+
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    const item = order.items.find(i => i._id.toString() === req.params.itemId || i.productId?.toString() === req.params.itemId);
+    if (!item) {
+      return res.status(404).json({ success: false, message: 'Item not found in order' });
+    }
+
+    if (item.returnStatus !== 'Return Requested') {
+      return res.status(400).json({ success: false, message: 'No active return request for this item' });
+    }
+
+    if (action === 'approve') {
+      item.returnStatus = 'Return Approved';
+    } else {
+      item.returnStatus = 'Return Rejected';
+      item.refundStatus = 'None';
+    }
+
+    await order.save();
+    return res.status(200).json({
+      success: true,
+      message: `Return request ${action}ed successfully`,
+      data: formatOrderResponse(order)
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Admin: Mark returned item parcel as received
+exports.adminReceiveParcel = async (req, res, next) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    const item = order.items.find(i => i._id.toString() === req.params.itemId || i.productId?.toString() === req.params.itemId);
+    if (!item) {
+      return res.status(404).json({ success: false, message: 'Item not found in order' });
+    }
+
+    if (item.returnStatus !== 'Return Approved') {
+      return res.status(400).json({ success: false, message: 'Return must be approved before marking parcel as received' });
+    }
+
+    item.parcelReceived = true;
+    await order.save();
+    return res.status(200).json({
+      success: true,
+      message: 'Parcel marked as received successfully',
+      data: formatOrderResponse(order)
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Admin: Settle refund and restore stock
+exports.adminRefundItem = async (req, res, next) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    const item = order.items.find(i => i._id.toString() === req.params.itemId || i.productId?.toString() === req.params.itemId);
+    if (!item) {
+      return res.status(404).json({ success: false, message: 'Item not found in order' });
+    }
+
+    if (!item.parcelReceived) {
+      return res.status(400).json({ success: false, message: 'Parcel must be received before issuing refund' });
+    }
+
+    if (item.returnStatus === 'Returned & Refunded') {
+      return res.status(400).json({ success: false, message: 'Refund already issued' });
+    }
+
+    item.returnStatus = 'Returned & Refunded';
+    item.refundStatus = 'Refunded';
+
+    // Restore stock
+    try {
+      if (item.isComboProduct) {
+        let combo = null;
+        if (item.productId && /^[0-9a-fA-F]{24}$/.test(item.productId)) {
+          combo = await ComboPack.findById(item.productId);
+        }
+        if (combo && combo.selectedVariants && combo.selectedVariants.length > 0) {
+          for (const sv of combo.selectedVariants) {
+            const prod = await Product.findById(sv.productId);
+            if (prod) {
+              const variant = prod.variants.find(v => v.id === sv.variantId || v._id?.toString() === sv.variantId);
+              if (variant) {
+                variant.stock += item.quantity;
+                prod.markModified('variants');
+                await prod.save();
+              }
+            }
+          }
+        } else {
+          for (const subItem of (item.includedProducts || [])) {
+            const subId = subItem.productId || subItem.id || subItem._id;
+            const prod = await Product.findById(subId);
+            if (prod && prod.variants && prod.variants.length > 0) {
+              prod.variants[0].stock += item.quantity;
+              prod.markModified('variants');
+              await prod.save();
+            }
+          }
+        }
+      } else {
+        const prod = await Product.findById(item.productId);
+        if (prod) {
+          const variant = findMatchingVariant(prod, item.selectedOptions);
+          if (variant) {
+            variant.stock += item.quantity;
+            prod.markModified('variants');
+            await prod.save();
+          }
+        }
+      }
+    } catch (stockErr) {
+      console.error('Failed to restock returned product:', stockErr);
+    }
+
+    await order.save();
+    return res.status(200).json({
+      success: true,
+      message: 'Refund issued and stock updated successfully',
       data: formatOrderResponse(order)
     });
   } catch (err) {

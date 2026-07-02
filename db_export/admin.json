@@ -1,0 +1,13 @@
+[
+  {
+    "_id": "6a38c5e18404bad57bb6db90",
+    "username": "admin",
+    "email": "jayamweb.designer2@gmail.com",
+    "password": "$2b$10$eW0vlX9gUVz/OICQm3HybexIZFarujwOamiF4PllnXkDeD9sFVGfG",
+    "photo": "uploads/avathar/avatar-1782452689190-427793159.webp",
+    "role": "Administrator",
+    "createdAt": "2026-06-22T05:19:29.330Z",
+    "updatedAt": "2026-07-01T10:07:30.251Z",
+    "__v": 0
+  }
+]
