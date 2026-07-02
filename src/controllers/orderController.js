@@ -219,7 +219,9 @@ exports.createOrder = async (req, res, next) => {
       gst = 0,
       shippingFee,
       total,
-      isDirectPurchase = false
+      isDirectPurchase = false,
+      couponCode = null,
+      couponDiscount = 0
     } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -299,6 +301,8 @@ exports.createOrder = async (req, res, next) => {
       subtotal: Number(subtotal),
       gst: Number(gst),
       shippingFee: Number(shippingFee),
+      couponCode,
+      couponDiscount: Number(couponDiscount),
       total: Number(total),
       status: initialStatus,
       statusColor: getStatusColor(initialStatus),
