@@ -1,18 +1,70 @@
 const CartItem = require('../models/CartItem');
+const Product = require('../models/Product');
+const StockReservation = require('../models/StockReservation');
 const { getValidProductImage, getImageUrl, saveBase64Image, getRelativeImagePath } = require('../utils/imageHelper');
 const logger = require('../utils/logger');
+
+// Helper function to get available stock for a product variant
+const getAvailableStock = async (productId, variantId) => {
+  try {
+    const product = await Product.findById(productId);
+    if (!product) {
+      return 0;
+    }
+
+    // Find the variant
+    const variant = product.variants?.find(v => v.id === variantId);
+    if (!variant) {
+      return 0;
+    }
+
+    const totalStock = variant.stock || 0;
+
+    // Get reserved stock from paid orders
+    const reservations = await StockReservation.findOne({
+      'items.productId': productId,
+      'items.variantId': variantId,
+      status: 'paid',
+      expiresAt: { $gt: new Date() }
+    });
+
+    const reservedStock = reservations?.items
+      ?.filter(item => item.productId.toString() === productId.toString() && item.variantId === variantId)
+      .reduce((sum, item) => sum + item.quantity, 0) || 0;
+
+    const availableStock = Math.max(0, totalStock - reservedStock);
+    return availableStock;
+  } catch (err) {
+    logger.cart.error('Error getting available stock', { productId, variantId, error: err.message });
+    return 0;
+  }
+};
 
 const normalizeCartItem = (item) => {
   const product = item.productId;
   // Get valid relative path or URL, checking if file exists on disk and falling back to variant if not
   const resolvedPath = getValidProductImage(item.image, product);
 
+  // Calculate available stock for this item based on variant
+  let availableStock = 0;
+  if (product && product.variants && product.variants.length > 0) {
+    const variantId = item.selectedOptions?.variantId || '';
+    const variant = variantId 
+      ? product.variants.find(v => v.id === variantId)
+      : product.variants[0];
+    
+    if (variant) {
+      availableStock = variant.stock || 0;
+    }
+  }
+
   const normalized = {
     ...item,
     id: item._id,
     productId: product ? (product._id || product.id) : item.productId,
     image: getImageUrl(resolvedPath),
-    freeShipping: product ? (product.freeShipping || 'No') : 'No'
+    freeShipping: product ? (product.freeShipping || 'No') : 'No',
+    availableStock: availableStock
   };
 
   if (normalized.selectedOptions && normalized.selectedOptions.customImage) {
@@ -39,7 +91,7 @@ exports.getCart = async (req, res, next) => {
 
 exports.addToCart = async (req, res, next) => {
   try {
-    const { productId, title, price, quantity = 1, image = '', selectedOptions = {}, isComboProduct = false, includedProducts = [], weight = 0, category = 'Catalog' } = req.body;
+    const { productId, title, price, quantity = 1, image = '', selectedOptions = {}, isComboProduct = false, includedProducts = [], weight = 0, category = 'Catalog', variantId = '' } = req.body;
 
     if (!productId || !title || price === undefined) {
       logger.cart.warn('Add to cart validation failed – missing required fields', { userId: req.user?._id, productId, title });
@@ -49,12 +101,34 @@ exports.addToCart = async (req, res, next) => {
       });
     }
 
+    // Check stock availability
+    const availableStock = await getAvailableStock(productId, variantId);
+    
+    // Get existing cart item if any
+    let cartItem = await CartItem.findOne({ user: req.user._id, productId });
+    const currentCartQuantity = cartItem?.quantity || 0;
+    const totalQuantityAfterAdd = currentCartQuantity + quantity;
+
+    if (totalQuantityAfterAdd > availableStock) {
+      logger.cart.warn('Stock limit exceeded on addToCart', { 
+        userId: req.user?._id, 
+        productId, 
+        requestedQty: quantity, 
+        currentCartQty: currentCartQuantity,
+        availableStock 
+      });
+      return res.status(400).json({
+        success: false,
+        message: `Insufficient stock. Available: ${availableStock}, Requested: ${totalQuantityAfterAdd}`,
+        availableStock
+      });
+    }
+
     const processedSelectedOptions = { ...selectedOptions };
     if (processedSelectedOptions.customImage) {
       processedSelectedOptions.customImage = saveBase64Image(processedSelectedOptions.customImage, 'customization', 'custom-img');
     }
 
-    let cartItem = await CartItem.findOne({ user: req.user._id, productId });
     if (cartItem) {
       cartItem.quantity += quantity;
       cartItem.selectedOptions = processedSelectedOptions;
@@ -98,14 +172,6 @@ exports.updateCartItem = async (req, res, next) => {
     const { id } = req.params;
     const payload = req.body;
 
-    if (payload.selectedOptions && payload.selectedOptions.customImage) {
-      payload.selectedOptions.customImage = saveBase64Image(payload.selectedOptions.customImage, 'customization', 'custom-img');
-    }
-
-    if (payload.image) {
-      payload.image = getRelativeImagePath(payload.image);
-    }
-
     const cartItem = await CartItem.findOne({ _id: id, user: req.user._id });
     if (!cartItem) {
       return res.status(404).json({
@@ -114,16 +180,47 @@ exports.updateCartItem = async (req, res, next) => {
       });
     }
 
+    // If quantity is being updated, validate stock
+    if (payload.quantity !== undefined && payload.quantity !== cartItem.quantity) {
+      const variantId = payload.variantId || cartItem.selectedOptions?.variantId || '';
+      const availableStock = await getAvailableStock(cartItem.productId, variantId);
+
+      if (payload.quantity > availableStock) {
+        logger.cart.warn('Stock limit exceeded on updateCartItem', { 
+          userId: req.user?._id, 
+          cartItemId: id,
+          productId: cartItem.productId,
+          requestedQty: payload.quantity,
+          availableStock 
+        });
+        return res.status(400).json({
+          success: false,
+          message: `Insufficient stock. Available: ${availableStock}, Requested: ${payload.quantity}`,
+          availableStock
+        });
+      }
+    }
+
+    if (payload.selectedOptions && payload.selectedOptions.customImage) {
+      payload.selectedOptions.customImage = saveBase64Image(payload.selectedOptions.customImage, 'customization', 'custom-img');
+    }
+
+    if (payload.image) {
+      payload.image = getRelativeImagePath(payload.image);
+    }
+
     Object.assign(cartItem, payload);
     await cartItem.save();
 
     const items = await CartItem.find({ user: req.user._id }).populate('productId').lean();
+    logger.cart.info('Cart item updated', { userId: req.user._id, cartItemId: id, newQuantity: payload.quantity });
     return res.status(200).json({
       success: true,
       message: 'Cart item updated',
       data: items.map(normalizeCartItem)
     });
   } catch (err) {
+    logger.cart.error('Failed to update cart item', { userId: req.user?._id, error: err.message });
     next(err);
   }
 };
