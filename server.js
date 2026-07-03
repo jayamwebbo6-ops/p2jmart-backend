@@ -66,6 +66,8 @@ apiRouter.use('/reviews', UserReview);
 const contactUs = require('./src/routes/contactRoutes.js');
 apiRouter.use('/contact-us', contactUs );
 
+const salesReportRoutes = require('./src/routes/Salesreportroutes.js');
+apiRouter.use('/sales-report', salesReportRoutes);
 
 // Category & Subcategory Routes
 const categoryRoutes = require('./src/routes/categoryRoutes');
