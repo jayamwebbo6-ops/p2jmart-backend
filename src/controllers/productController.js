@@ -1,10 +1,11 @@
-const mongoose = require('mongoose'); // 🟢 Added mongoose import for ObjectId conversion
+const mongoose = require('mongoose');
 
 const Product = require('../models/Product');
 const Order = require('../models/Order');
 const Category = require('../models/Category');
 const Subcategory = require('../models/Subcategory');
 const { saveBase64Image, deleteImageFile, getImageUrl, getValidProductImage } = require('../utils/imageHelper');
+const logger = require('../utils/logger');
 
 // Helper to extract relative path from absolute URLs before saving to DB
 const getRelativeImagePath = (urlOrPath) => {
@@ -254,7 +255,16 @@ exports.createProduct = async (req, res) => {
       category: categoryId,
       subcategory: subcategoryId,
       freeShipping: freeShipping || 'No',
-      reviewList: [] // Ensure array initializes cleanly
+      reviewList: []
+    });
+
+    logger.product.info('New product created', {
+      productId: product._id,
+      title: product.title,
+      categoryId,
+      subcategoryId,
+      variantCount: processedVariants.length,
+      price: priceNum
     });
 
     res.status(201).json({
@@ -262,6 +272,7 @@ exports.createProduct = async (req, res) => {
       data: formatProductResponse(product)
     });
   } catch (err) {
+    logger.product.error('Failed to create product', { title: req.body?.title, error: err.message });
     res.status(500).json({
       success: false,
       message: err.message || 'Internal Server Error'

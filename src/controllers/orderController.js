@@ -4,9 +4,10 @@ const Product = require('../models/Product');
 const ComboPack = require('../models/ComboPack');
 const StockReservation = require('../models/StockReservation');
 const { saveBase64Image, getImageUrl } = require('../utils/imageHelper');
-const { sendEmail } = require('../utils/emailHelper'); // Update path to your mail utility
-const User = require('../models/User'); // Update to your exact user model path
+const { sendEmail } = require('../utils/emailHelper');
+const User = require('../models/User');
 const { getOrderConfirmationTemplate } = require('../utils/emailTemplate');
+const logger = require('../utils/logger');
 
 // Helper to find matching variant based on selectedOptions
 const findMatchingVariant = (product, selectedOptions = {}) => {
@@ -75,12 +76,14 @@ const validateAndDeductStock = async (items) => {
           const variant = prod.variants.find(v => v.id === sv.variantId || v._id?.toString() === sv.variantId);
           if (!variant) continue;
           
-          const neededQty = quantity; // Each combo contains 1 of each product
+          const neededQty = quantity;
           if (variant.stock < neededQty) {
+            logger.stock.error(`Combo component out of stock`, { product: prod.title, available: variant.stock, needed: neededQty, variantId: sv.variantId });
             throw new Error(`Item '${prod.title}' inside Combo Pack is out of stock. Available: ${variant.stock}`);
           }
           
           variant.stock -= neededQty;
+          logger.stock.info(`Stock deducted for combo component`, { product: prod.title, variantId: sv.variantId, deducted: neededQty, remaining: variant.stock });
           reservationItems.push({
             productId: prod._id,
             variantId: variant.id || variant._id?.toString(),
@@ -96,16 +99,17 @@ const validateAndDeductStock = async (items) => {
           const prod = await getProductDoc(subId);
           if (!prod) continue;
           
-          // Custom combo subItem might not specify variantId, default to first variant
           const variant = prod.variants && prod.variants.length > 0 ? prod.variants[0] : null;
           if (!variant) continue;
           
           const neededQty = quantity;
           if (variant.stock < neededQty) {
+            logger.stock.error(`Custom combo component out of stock`, { product: prod.title, available: variant.stock, needed: neededQty });
             throw new Error(`Item '${prod.title}' inside custom pack is out of stock. Available: ${variant.stock}`);
           }
           
           variant.stock -= neededQty;
+          logger.stock.info(`Stock deducted for custom combo component`, { product: prod.title, deducted: neededQty, remaining: variant.stock });
           reservationItems.push({
             productId: prod._id,
             variantId: variant.id || variant._id?.toString(),
@@ -118,19 +122,23 @@ const validateAndDeductStock = async (items) => {
       // 2. Standard Product
       const prod = await getProductDoc(item.productId);
       if (!prod) {
+        logger.stock.error(`Product not found during stock validation`, { productId: item.productId });
         throw new Error(`Product not found for ID: ${item.productId}`);
       }
       
       const variant = findMatchingVariant(prod, item.selectedOptions);
       if (!variant) {
+        logger.stock.error(`No matching variant found`, { product: prod.title, selectedOptions: item.selectedOptions });
         throw new Error(`No available variant found for product: ${prod.title}`);
       }
       
       if (variant.stock < quantity) {
+        logger.stock.error(`Insufficient stock for product`, { product: prod.title, available: variant.stock, needed: quantity });
         throw new Error(`Product '${prod.title}' is out of stock or has insufficient quantity. Available: ${variant.stock}`);
       }
       
       variant.stock -= quantity;
+      logger.stock.info(`Stock deducted for standard product`, { product: prod.title, variantId: variant.id, deducted: quantity, remaining: variant.stock });
       reservationItems.push({
         productId: prod._id,
         variantId: variant.id || variant._id?.toString(),
@@ -224,11 +232,23 @@ exports.createOrder = async (req, res, next) => {
       couponDiscount = 0
     } = req.body;
 
+    logger.checkout.info('Order creation initiated', {
+      userId: req.user._id,
+      itemCount: items?.length,
+      paymentMethod,
+      paymentStatus,
+      isDirectPurchase,
+      total,
+      couponCode: couponCode || 'none'
+    });
+
     if (!items || !Array.isArray(items) || items.length === 0) {
+      logger.checkout.warn('Order rejected – no items provided', { userId: req.user._id });
       return res.status(400).json({ success: false, message: 'No items provided for order' });
     }
 
     if (!shippingAddress || !shippingAddress.fullName || !shippingAddress.streetAddress) {
+      logger.checkout.warn('Order rejected – invalid shipping address', { userId: req.user._id });
       return res.status(400).json({ success: false, message: 'Invalid shipping address details' });
     }
 
@@ -285,7 +305,9 @@ exports.createOrder = async (req, res, next) => {
     let reservationItems = [];
     try {
       reservationItems = await validateAndDeductStock(normalizedItems);
+      logger.stock.info('Stock validation & deduction completed', { orderId: 'pending', itemsReserved: reservationItems.length });
     } catch (stockError) {
+      logger.checkout.error('Order rejected – stock validation failed', { userId: req.user._id, reason: stockError.message });
       return res.status(400).json({ success: false, message: stockError.message });
     }
 
@@ -318,6 +340,26 @@ exports.createOrder = async (req, res, next) => {
       expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes from now
       processed: false
     });
+
+    logger.stock.info('Stock reservation created', {
+      orderId: newOrder.orderId,
+      mongoId: newOrder._id,
+      itemCount: reservationItems.length,
+      expiresInMinutes: 15
+    });
+    logger.order.info('Order created successfully', {
+      orderId: newOrder.orderId,
+      userId: req.user._id,
+      paymentMethod,
+      paymentStatus,
+      subtotal,
+      total,
+      couponCode: couponCode || 'none',
+      couponDiscount,
+      isDirectPurchase,
+      itemCount: normalizedItems.length
+    });
+    logger.checkout.info('Checkout flow completed', { orderId: newOrder.orderId, userId: req.user._id, total });
 
     // Clear user cart if not direct buy
     if (!isDirectPurchase) {
@@ -358,6 +400,7 @@ exports.createOrder = async (req, res, next) => {
       data: formatOrderResponse(newOrder)
     });
   } catch (err) {
+    logger.checkout.error('Unhandled error in createOrder', { userId: req.user?._id, error: err.message, stack: err.stack?.slice(0, 300) });
     next(err);
   }
 };

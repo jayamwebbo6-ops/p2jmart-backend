@@ -2,11 +2,11 @@ const cron = require('node-cron');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const StockReservation = require('../models/StockReservation');
+const logger = require('./logger');
 
 const processExpiredReservations = async () => {
   try {
     const now = new Date();
-    // Find unprocessed reservations that have expired
     const expiredReservations = await StockReservation.find({
       expiresAt: { $lte: now },
       processed: false
@@ -14,7 +14,7 @@ const processExpiredReservations = async () => {
 
     if (expiredReservations.length === 0) return;
 
-    console.log(`[Inventory Cron] Found ${expiredReservations.length} expired stock reservations to process.`);
+    logger.stock.info(`Found ${expiredReservations.length} expired stock reservations to process.`);
 
     for (const reservation of expiredReservations) {
       try {
@@ -25,30 +25,30 @@ const processExpiredReservations = async () => {
           reservation.processed = true;
           reservation.status = 'paid';
           await reservation.save();
-          console.log(`[Inventory Cron] Reservation for Order ${order.orderId} processed. Payment is SUCCESS: stock reduced permanently.`);
+          logger.stock.info(`Reservation confirmed paid – stock reduced permanently`, { orderId: order.orderId });
           continue;
         }
 
         // Case B: Order is unpaid / cancelled or deleted -> Restock!
-        console.log(`[Inventory Cron] Order ${order ? order.orderId : reservation.orderId} is unpaid or cancelled. Restocking items...`);
+        logger.stock.warn(`Order unpaid/cancelled – restocking items`, { orderId: order ? order.orderId : reservation.orderId });
 
         for (const item of reservation.items) {
           const product = await Product.findById(item.productId);
           if (!product) {
-            console.error(`[Inventory Cron] Product not found for restocking: ${item.productId}`);
+            logger.stock.error(`Product not found for restocking`, { productId: item.productId });
             continue;
           }
 
           const variant = product.variants.find(v => v.id === item.variantId || v._id?.toString() === item.variantId);
           if (!variant) {
-            console.error(`[Inventory Cron] Variant ${item.variantId} not found on Product ${product.title} for restocking`);
+            logger.stock.error(`Variant not found for restocking`, { variantId: item.variantId, product: product.title });
             continue;
           }
 
           variant.stock += item.quantity;
           product.markModified('variants');
           await product.save();
-          console.log(`[Inventory Cron] Restocked ${item.quantity} units of '${product.title}' (Variant: ${item.variantId})`);
+          logger.stock.info(`Restocked product variant`, { product: product.title, variantId: item.variantId, quantity: item.quantity, newStock: variant.stock });
         }
 
         // Update the order status to 'Cancelled' if it is unpaid and not already cancelled
@@ -57,18 +57,18 @@ const processExpiredReservations = async () => {
           order.statusColor = 'text-red-600 bg-red-50';
           order.statusDate = new Date();
           await order.save();
-          console.log(`[Inventory Cron] Order ${order.orderId} status set to Cancelled due to payment expiration.`);
+          logger.order.warn(`Order cancelled due to payment expiration`, { orderId: order.orderId });
         }
 
         reservation.processed = true;
         reservation.status = 'unpaid';
         await reservation.save();
       } catch (err) {
-        console.error(`[Inventory Cron] Error processing reservation ${reservation._id}:`, err);
+        logger.stock.error(`Error processing reservation`, { reservationId: reservation._id, error: err.message });
       }
     }
   } catch (err) {
-    console.error('[Inventory Cron] Error in cron execution:', err);
+    logger.stock.error('Critical error in stock reservation cron', { error: err.message });
   }
 };
 
@@ -81,7 +81,7 @@ const startStockReservationCron = () => {
     processExpiredReservations();
   });
 
-  console.log('[Inventory Cron] Real-time Stock Reservation Cron Job initialized with node-cron.');
+  logger.stock.info('Stock Reservation Cron Job initialised – running every minute.');
 };
 
 module.exports = { startStockReservationCron };

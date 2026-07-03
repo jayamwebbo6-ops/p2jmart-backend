@@ -1,5 +1,6 @@
 const CartItem = require('../models/CartItem');
 const { getValidProductImage, getImageUrl, saveBase64Image } = require('../utils/imageHelper');
+const logger = require('../utils/logger');
 
 const normalizeCartItem = (item) => {
   const product = item.productId;
@@ -41,6 +42,7 @@ exports.addToCart = async (req, res, next) => {
     const { productId, title, price, quantity = 1, image = '', selectedOptions = {}, isComboProduct = false, includedProducts = [], weight = 0, category = 'Catalog' } = req.body;
 
     if (!productId || !title || price === undefined) {
+      logger.cart.warn('Add to cart validation failed – missing required fields', { userId: req.user?._id, productId, title });
       return res.status(400).json({
         success: false,
         message: 'productId, title and price are required to add an item to cart'
@@ -79,12 +81,14 @@ exports.addToCart = async (req, res, next) => {
     }
 
     const items = await CartItem.find({ user: req.user._id }).populate('productId').lean();
+    logger.cart.info(`Item ${cartItem._id ? 'updated' : 'added'} in cart`, { userId: req.user._id, productId, title, quantity, price, isComboProduct });
     return res.status(200).json({
       success: true,
       message: 'Item added to cart successfully',
       data: items.map(normalizeCartItem)
     });
   } catch (err) {
+    logger.cart.error('Unexpected error in addToCart', { userId: req.user?._id, error: err.message });
     next(err);
   }
 };
@@ -124,6 +128,7 @@ exports.removeCartItem = async (req, res, next) => {
   try {
     const { id } = req.params;
     await CartItem.deleteOne({ _id: id, user: req.user._id });
+    logger.cart.info('Cart item removed', { userId: req.user._id, cartItemId: id });
 
     const items = await CartItem.find({ user: req.user._id }).populate('productId').lean();
     return res.status(200).json({
@@ -132,6 +137,7 @@ exports.removeCartItem = async (req, res, next) => {
       data: items.map(normalizeCartItem)
     });
   } catch (err) {
+    logger.cart.error('Failed to remove cart item', { userId: req.user?._id, error: err.message });
     next(err);
   }
 };
@@ -139,12 +145,14 @@ exports.removeCartItem = async (req, res, next) => {
 exports.clearCart = async (req, res, next) => {
   try {
     await CartItem.deleteMany({ user: req.user._id });
+    logger.cart.info('Cart cleared', { userId: req.user._id });
     return res.status(200).json({
       success: true,
       message: 'Cart cleared',
       data: []
     });
   } catch (err) {
+    logger.cart.error('Failed to clear cart', { userId: req.user?._id, error: err.message });
     next(err);
   }
 };
