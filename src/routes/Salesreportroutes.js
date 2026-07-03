@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const salesReportController = require('../controllers/salesReportController');
+const salesReportController = require('../controllers/salesReportcontroller');
 const { protectAdmin } = require('../middleware/auth');
 
 router.get('/admin/summary', protectAdmin, salesReportController.getSalesReport);
