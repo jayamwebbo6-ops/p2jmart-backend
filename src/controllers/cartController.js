@@ -9,31 +9,43 @@ const getAvailableStock = async (productId, variantId) => {
   try {
     const product = await Product.findById(productId);
     if (!product) {
+      logger.cart.warn('Product not found for stock check', { productId });
       return 0;
     }
 
-    // Find the variant
-    const variant = product.variants?.find(v => v.id === variantId);
+    let variant = null;
+
+    // If variantId is provided and non-empty, try to find it
+    if (variantId && variantId.trim()) {
+      variant = product.variants?.find(v => {
+        // Try multiple matching strategies for flexibility
+        const vId = String(v.id || v._id || '');
+        const reqId = String(variantId);
+        return vId === reqId;
+      });
+    }
+
+    // If no variant found or variantId was empty, use the first variant
+    if (!variant && product.variants && product.variants.length > 0) {
+      variant = product.variants[0];
+    }
+
+    // If still no variant, return 0
     if (!variant) {
+      logger.cart.warn('No variant found for product', { productId, variantId, variantCount: product.variants?.length });
       return 0;
     }
 
-    const totalStock = variant.stock || 0;
+    // Get total stock from variant (this is the simple approach - no reservation deduction)
+    const totalStock = Math.max(0, Number(variant.stock) || 0);
 
-    // Get reserved stock from paid orders
-    const reservations = await StockReservation.findOne({
-      'items.productId': productId,
-      'items.variantId': variantId,
-      status: 'paid',
-      expiresAt: { $gt: new Date() }
+    logger.cart.info('Stock check result', { 
+      productId, 
+      variantId: String(variant.id || variant._id),
+      totalStock
     });
 
-    const reservedStock = reservations?.items
-      ?.filter(item => item.productId.toString() === productId.toString() && item.variantId === variantId)
-      .reduce((sum, item) => sum + item.quantity, 0) || 0;
-
-    const availableStock = Math.max(0, totalStock - reservedStock);
-    return availableStock;
+    return totalStock;
   } catch (err) {
     logger.cart.error('Error getting available stock', { productId, variantId, error: err.message });
     return 0;
