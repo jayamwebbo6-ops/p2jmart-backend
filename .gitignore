@@ -2,4 +2,18 @@ node_modules/
 dist/
 build/
 coverage/
-*.loggit
+.env
+.env.local
+.env.production
+
+# Log files (daily rotating logs in backend/logs/)
+*.log
+*.logs
+logs/
+
+# Auto-generated backup snapshots
+backups/
+
+# OS files
+.DS_Store
+Thumbs.db
