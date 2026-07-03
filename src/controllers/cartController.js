@@ -1,5 +1,5 @@
 const CartItem = require('../models/CartItem');
-const { getValidProductImage, getImageUrl, saveBase64Image } = require('../utils/imageHelper');
+const { getValidProductImage, getImageUrl, saveBase64Image, getRelativeImagePath } = require('../utils/imageHelper');
 const logger = require('../utils/logger');
 
 const normalizeCartItem = (item) => {
@@ -58,7 +58,7 @@ exports.addToCart = async (req, res, next) => {
     if (cartItem) {
       cartItem.quantity += quantity;
       cartItem.selectedOptions = processedSelectedOptions;
-      cartItem.image = image;
+      cartItem.image = getRelativeImagePath(image);
       cartItem.isComboProduct = isComboProduct;
       cartItem.includedProducts = includedProducts;
       cartItem.weight = weight;
@@ -71,7 +71,7 @@ exports.addToCart = async (req, res, next) => {
         title,
         price,
         quantity,
-        image,
+        image: getRelativeImagePath(image),
         selectedOptions: processedSelectedOptions,
         isComboProduct,
         includedProducts,
@@ -100,6 +100,10 @@ exports.updateCartItem = async (req, res, next) => {
 
     if (payload.selectedOptions && payload.selectedOptions.customImage) {
       payload.selectedOptions.customImage = saveBase64Image(payload.selectedOptions.customImage, 'customization', 'custom-img');
+    }
+
+    if (payload.image) {
+      payload.image = getRelativeImagePath(payload.image);
     }
 
     const cartItem = await CartItem.findOne({ _id: id, user: req.user._id });

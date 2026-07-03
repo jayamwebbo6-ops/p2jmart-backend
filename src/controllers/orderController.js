@@ -3,7 +3,7 @@ const CartItem = require('../models/CartItem');
 const Product = require('../models/Product');
 const ComboPack = require('../models/ComboPack');
 const StockReservation = require('../models/StockReservation');
-const { saveBase64Image, getImageUrl } = require('../utils/imageHelper');
+const { saveBase64Image, getImageUrl, getRelativeImagePath } = require('../utils/imageHelper');
 const { sendEmail } = require('../utils/emailHelper');
 const User = require('../models/User');
 const { getOrderConfirmationTemplate } = require('../utils/emailTemplate');
@@ -292,7 +292,7 @@ exports.createOrder = async (req, res, next) => {
         title: item.title || item.name,
         price: Number(item.price),
         quantity: Number(item.quantity || item.qty || 1),
-        image: item.image || (item.images && item.images[0]) || '',
+        image: getRelativeImagePath(item.image || (item.images && item.images[0]) || ''),
         selectedOptions,
         isComboProduct: Boolean(item.isComboProduct),
         includedProducts: item.includedProducts || [],
