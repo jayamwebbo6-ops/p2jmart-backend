@@ -1,5 +1,6 @@
 const { sendEmail } = require('../utils/emailHelper');
 const { getContactFormTemplate } = require('../utils/emailTemplate'); // Imported template engine
+const Enquiry = require('../models/enquiry');
 
 exports.handleContactForm = async (req, res, next) => {
   try {
@@ -28,7 +29,20 @@ Message: ${message}
     // 1. Generate the modular HTML using our shared styling framework
     const emailHtmlBody = getContactFormTemplate({ name, email, phone, subject, message });
 
-    // 2. Transmit the email notification directly to your platform admin address
+    // 2. Save enquiry to database so it appears in the admin dashboard
+    const ipAddress = req.ip || req.connection.remoteAddress;
+    const userAgent = req.get('user-agent');
+    await Enquiry.create({
+      name,
+      email,
+      phone,
+      subject,
+      message,
+      ipAddress,
+      userAgent
+    });
+
+    // 3. Transmit the email notification directly to your platform admin address
     await sendEmail(process.env.EMAIL_FROM_EMAIL, emailSubject, emailTextBody, emailHtmlBody);
 
     return res.status(200).json({
