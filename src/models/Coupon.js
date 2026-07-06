@@ -50,6 +50,10 @@ const couponSchema = new mongoose.Schema(
     isSingleUse: {
       type: Boolean,
       default: true
+    },
+    usageLimitPerUser: {
+      type: Number,
+      default: 1
     }
   },
   {
