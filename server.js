@@ -111,10 +111,13 @@ apiRouter.use('/combos', comboRoutes);
 const couponRoutes = require('./src/routes/couponRoutes');
 apiRouter.use('/coupons', couponRoutes);
 
+// Payment Routes
+const paymentRoutes = require('./src/routes/paymentRoutes');
+apiRouter.use('/payments', paymentRoutes);
+
 // Mount the API Router under both prefixes (default /api and dynamic base URL from env)
-// const BASE_URL = process.env.BASE_URL || 'p2jmart';
 app.use('/api', apiRouter);
-// app.use(`/${BASE_URL}/api`, apiRouter);
+app.use(`/${BASE_URL}/api`, apiRouter);
 
 // Global Error Handler
 app.use((err, req, res, next) => {

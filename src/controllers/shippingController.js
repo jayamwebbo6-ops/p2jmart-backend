@@ -38,7 +38,12 @@ exports.createShipping = async (req, res, next) => {
       data: newShipping
     });
   } catch (err) {
-    next(err);
+    console.error('Error in createShipping:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to create shipping rate',
+      error: err.message
+    });
   }
 };
 
@@ -53,7 +58,12 @@ exports.getAllShipping = async (req, res, next) => {
       data: shippingList
     });
   } catch (err) {
-    next(err);
+    console.error('Error in getAllShipping:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch shipping rates',
+      error: err.message
+    });
   }
 };
 
@@ -97,7 +107,12 @@ exports.updateShipping = async (req, res, next) => {
       data: shippingRecord 
     });
   } catch (err) {
-    next(err);
+    console.error('Error in updateShipping:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update shipping rate',
+      error: err.message
+    });
   }
 };
 
@@ -119,6 +134,11 @@ exports.deleteShipping = async (req, res, next) => {
       message: 'Shipping record removed permanently from database'
     });
   } catch (err) {
-    next(err);
+    console.error('Error in deleteShipping:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to delete shipping rate',
+      error: err.message
+    });
   }
 };

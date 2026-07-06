@@ -44,6 +44,30 @@ const saveBase64Image = (base64Str, subFolder = 'avathar', prefix = 'avatar') =>
 };
 
 /**
+ * Strips backend URL from an image path/URL and returns just the relative path.
+ * If path is already relative, returns as-is. External URLs are returned unchanged.
+ * @param {string} imagePath - Full URL or relative path.
+ * @returns {string} - Relative path for storage in database.
+ */
+const getRelativeImagePath = (imagePath) => {
+  if (!imagePath) return '';
+
+  // If it's a data URI or external URL, return as-is
+  if (imagePath.startsWith('data:image') || imagePath.startsWith('https://') || imagePath.startsWith('http://')) {
+    // Try to extract relative path if it contains the uploads directory
+    const uploadsIndex = imagePath.indexOf('uploads/');
+    if (uploadsIndex !== -1) {
+      return imagePath.substring(uploadsIndex);
+    }
+    // If it's an external URL, return as-is
+    return imagePath;
+  }
+
+  // Already a relative path
+  return imagePath;
+};
+
+/**
  * Formats relative database image path into a fully qualified URL.
  * @param {string} photoPath - Relative image path.
  * @returns {string} - Full URL.
@@ -142,6 +166,7 @@ const getFirstValidVariantImage = (product) => {
 module.exports = {
   saveBase64Image,
   getImageUrl,
+  getRelativeImagePath,
   deleteImageFile,
   getValidProductImage
 };
