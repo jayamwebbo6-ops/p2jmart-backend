@@ -1,4 +1,5 @@
 const Coupon = require('../models/Coupon');
+const Order = require('../models/Order');
 
 // Create a new Coupon
 exports.createCoupon = async (req, res, next) => {
@@ -14,7 +15,8 @@ exports.createCoupon = async (req, res, next) => {
       validityTo,
       title,
       applicableForActiveUsersOnly,
-      isSingleUse
+      isSingleUse,
+      usageLimitPerUser
     } = req.body;
 
     if (!code || !discountValue || !validityFrom || !validityTo) {
@@ -47,13 +49,50 @@ exports.createCoupon = async (req, res, next) => {
       validityTo,
       title: formattedTitle,
       applicableForActiveUsersOnly: applicableForActiveUsersOnly !== undefined ? applicableForActiveUsersOnly : true,
-      isSingleUse: isSingleUse !== undefined ? isSingleUse : true
+      isSingleUse: isSingleUse !== undefined ? isSingleUse : true,
+      usageLimitPerUser: usageLimitPerUser || 1
     });
 
     return res.status(201).json({
       success: true,
       message: 'Coupon created successfully.',
       data: newCoupon
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Update an existing Coupon
+exports.updateCoupon = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+    
+    // Check if updating code to an existing one
+    if (updateData.code) {
+      updateData.code = updateData.code.toUpperCase().trim();
+      const existing = await Coupon.findOne({ code: updateData.code, _id: { $ne: id } });
+      if (existing) {
+        return res.status(400).json({ success: false, message: 'A coupon with this code already exists.' });
+      }
+    }
+
+    if (updateData.title === '' && updateData.discountType && updateData.discountValue) {
+      updateData.title = (updateData.discountType === 'Percentage (%)' 
+        ? `${updateData.discountValue}% Off on your order` 
+        : `Flat ₹${updateData.discountValue} Off on your order`);
+    }
+
+    const updatedCoupon = await Coupon.findByIdAndUpdate(id, updateData, { new: true });
+    if (!updatedCoupon) {
+      return res.status(404).json({ success: false, message: 'Coupon not found.' });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Coupon updated successfully.',
+      data: updatedCoupon
     });
   } catch (err) {
     next(err);
@@ -68,6 +107,37 @@ exports.getAllCoupons = async (req, res, next) => {
       success: true,
       count: coupons.length,
       data: coupons
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Get Coupons for User (annotated with usage)
+exports.getEligibleCoupons = async (req, res, next) => {
+  try {
+    const coupons = await Coupon.find({}).sort({ createdAt: -1 });
+    
+    const annotatedCoupons = await Promise.all(coupons.map(async (coupon) => {
+      const usageCount = await Order.countDocuments({
+        user: req.user._id,
+        couponCode: coupon.code,
+        status: { $ne: 'Cancelled' }
+      });
+      
+      const isExhausted = usageCount >= (coupon.usageLimitPerUser || 1);
+      
+      return {
+        ...coupon.toObject(),
+        usageCount,
+        isExhausted
+      };
+    }));
+
+    return res.status(200).json({
+      success: true,
+      count: annotatedCoupons.length,
+      data: annotatedCoupons
     });
   } catch (err) {
     next(err);
@@ -195,6 +265,21 @@ exports.applyCoupon = async (req, res, next) => {
         success: false,
         message: `Minimum order amount of ₹${coupon.minOrderAmount} is required to use this coupon.`
       });
+    }
+
+    // Check usage limit per user
+    if (req.user) {
+      const usageCount = await Order.countDocuments({
+        user: req.user._id,
+        couponCode: coupon.code,
+        status: { $ne: 'Cancelled' }
+      });
+      if (usageCount >= coupon.usageLimitPerUser) {
+        return res.status(400).json({
+          success: false,
+          message: `You have reached the maximum usage limit (${coupon.usageLimitPerUser}) for this coupon.`
+        });
+      }
     }
 
     // Calculate discount amount
