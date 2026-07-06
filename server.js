@@ -111,6 +111,10 @@ apiRouter.use('/combos', comboRoutes);
 const couponRoutes = require('./src/routes/couponRoutes');
 apiRouter.use('/coupons', couponRoutes);
 
+// Payment Routes
+const paymentRoutes = require('./src/routes/paymentRoutes');
+apiRouter.use('/payments', paymentRoutes);
+
 // Mount the API Router under both prefixes (default /api and dynamic base URL from env)
 app.use('/api', apiRouter);
 app.use(`/${BASE_URL}/api`, apiRouter);
