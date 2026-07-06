@@ -168,6 +168,34 @@ exports.toggleCouponStatus = async (req, res, next) => {
   }
 };
 
+
+exports.getAvailableCoupons = async (req, res, next) => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const coupons = await Coupon.find({ status: 'Active' }).sort({ createdAt: -1 });
+
+    const availableCoupons = coupons.filter(coupon => {
+      const validFrom = new Date(coupon.validityFrom);
+      validFrom.setHours(0, 0, 0, 0);
+
+      const validTo = new Date(coupon.validityTo);
+      validTo.setHours(23, 59, 59, 999);
+
+      return today >= validFrom && today <= validTo;
+    });
+
+    return res.status(200).json({
+      success: true,
+      count: availableCoupons.length,
+      data: availableCoupons
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // Delete a Coupon
 exports.deleteCoupon = async (req, res, next) => {
   try {

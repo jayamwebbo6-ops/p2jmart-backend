@@ -6,6 +6,8 @@ const { protectUser } = require('../middleware/userAuth');
 
 router.post('/create', protectAdmin, couponController.createCoupon);
 router.get('/getAll', couponController.getAllCoupons);
+router.get('/available', couponController.getAvailableCoupons);
+
 router.put('/toggle-status/:id', protectAdmin, couponController.toggleCouponStatus);
 router.delete('/delete/:id', protectAdmin, couponController.deleteCoupon);
 router.put('/update/:id', protectAdmin, couponController.updateCoupon);
