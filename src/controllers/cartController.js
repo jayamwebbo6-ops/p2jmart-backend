@@ -39,8 +39,8 @@ const getAvailableStock = async (productId, variantId) => {
     // Get total stock from variant (this is the simple approach - no reservation deduction)
     const totalStock = Math.max(0, Number(variant.stock) || 0);
 
-    logger.cart.info('Stock check result', { 
-      productId, 
+    logger.cart.info('Stock check result', {
+      productId,
       variantId: String(variant.id || variant._id),
       totalStock
     });
@@ -61,10 +61,10 @@ const normalizeCartItem = (item) => {
   let availableStock = 0;
   if (product && product.variants && product.variants.length > 0) {
     const variantId = item.selectedOptions?.variantId || '';
-    const variant = variantId 
+    const variant = variantId
       ? product.variants.find(v => v.id === variantId)
       : product.variants[0];
-    
+
     if (variant) {
       availableStock = variant.stock || 0;
     }
@@ -115,19 +115,19 @@ exports.addToCart = async (req, res, next) => {
 
     // Check stock availability
     const availableStock = await getAvailableStock(productId, variantId);
-    
+
     // Get existing cart item if any
     let cartItem = await CartItem.findOne({ user: req.user._id, productId });
     const currentCartQuantity = cartItem?.quantity || 0;
     const totalQuantityAfterAdd = currentCartQuantity + quantity;
 
     if (totalQuantityAfterAdd > availableStock) {
-      logger.cart.warn('Stock limit exceeded on addToCart', { 
-        userId: req.user?._id, 
-        productId, 
-        requestedQty: quantity, 
+      logger.cart.warn('Stock limit exceeded on addToCart', {
+        userId: req.user?._id,
+        productId,
+        requestedQty: quantity,
         currentCartQty: currentCartQuantity,
-        availableStock 
+        availableStock
       });
       return res.status(400).json({
         success: false,
@@ -198,12 +198,12 @@ exports.updateCartItem = async (req, res, next) => {
       const availableStock = await getAvailableStock(cartItem.productId, variantId);
 
       if (payload.quantity > availableStock) {
-        logger.cart.warn('Stock limit exceeded on updateCartItem', { 
-          userId: req.user?._id, 
+        logger.cart.warn('Stock limit exceeded on updateCartItem', {
+          userId: req.user?._id,
           cartItemId: id,
           productId: cartItem.productId,
           requestedQty: payload.quantity,
-          availableStock 
+          availableStock
         });
         return res.status(400).json({
           success: false,

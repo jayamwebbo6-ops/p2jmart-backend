@@ -96,11 +96,11 @@ const OrderSchema = new mongoose.Schema(
       type: String,
       required: true
     },
-   paymentStatus: {
-    type: String,
-    enum: ['pending', 'paid', 'failed'],
-    default: 'pending'
-},
+    paymentStatus: {
+      type: String,
+      enum: ['pending', 'paid', 'failed'],
+      default: 'pending'
+    },
     subtotal: {
       type: Number,
       required: true
@@ -152,24 +152,24 @@ const OrderSchema = new mongoose.Schema(
     },
     deliveredAt: {
       type: Date
-    },ccavenueTrackingId: {
-    type: String,
-    default: ""
-},
+    }, ccavenueTrackingId: {
+      type: String,
+      default: ""
+    },
 
-bankRefNo: {
-    type: String,
-    default: ""
-},
+    bankRefNo: {
+      type: String,
+      default: ""
+    },
 
-paymentResponse: {
-    type: Object,
-    default: {}
-},
+    paymentResponse: {
+      type: Object,
+      default: {}
+    },
 
-transactionDate: {
-    type: Date
-}
+    transactionDate: {
+      type: Date
+    }
   },
   {
     timestamps: true

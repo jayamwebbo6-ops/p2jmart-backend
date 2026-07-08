@@ -60,7 +60,7 @@ const validateAndDeductStock = async (items) => {
 
   for (const item of items) {
     const quantity = Number(item.quantity) || 1;
-    
+
     if (item.isComboProduct) {
       // 1. Combo Product
       // Check if it's a pre-defined ComboPack
@@ -72,16 +72,16 @@ const validateAndDeductStock = async (items) => {
         for (const sv of combo.selectedVariants) {
           const prod = await getProductDoc(sv.productId);
           if (!prod) continue;
-          
+
           const variant = prod.variants.find(v => v.id === sv.variantId || v._id?.toString() === sv.variantId);
           if (!variant) continue;
-          
+
           const neededQty = quantity;
           if (variant.stock < neededQty) {
             logger.stock.error(`Combo component out of stock`, { product: prod.title, available: variant.stock, needed: neededQty, variantId: sv.variantId });
             throw new Error(`Item '${prod.title}' inside Combo Pack is out of stock. Available: ${variant.stock}`);
           }
-          
+
           variant.stock -= neededQty;
           logger.stock.info(`Stock deducted for combo component`, { product: prod.title, variantId: sv.variantId, deducted: neededQty, remaining: variant.stock });
           reservationItems.push({
@@ -98,16 +98,16 @@ const validateAndDeductStock = async (items) => {
           const subId = subItem.productId || subItem.id || subItem._id;
           const prod = await getProductDoc(subId);
           if (!prod) continue;
-          
+
           const variant = prod.variants && prod.variants.length > 0 ? prod.variants[0] : null;
           if (!variant) continue;
-          
+
           const neededQty = quantity;
           if (variant.stock < neededQty) {
             logger.stock.error(`Custom combo component out of stock`, { product: prod.title, available: variant.stock, needed: neededQty });
             throw new Error(`Item '${prod.title}' inside custom pack is out of stock. Available: ${variant.stock}`);
           }
-          
+
           variant.stock -= neededQty;
           logger.stock.info(`Stock deducted for custom combo component`, { product: prod.title, deducted: neededQty, remaining: variant.stock });
           reservationItems.push({
@@ -125,18 +125,18 @@ const validateAndDeductStock = async (items) => {
         logger.stock.error(`Product not found during stock validation`, { productId: item.productId });
         throw new Error(`Product not found for ID: ${item.productId}`);
       }
-      
+
       const variant = findMatchingVariant(prod, item.selectedOptions);
       if (!variant) {
         logger.stock.error(`No matching variant found`, { product: prod.title, selectedOptions: item.selectedOptions });
         throw new Error(`No available variant found for product: ${prod.title}`);
       }
-      
+
       if (variant.stock < quantity) {
         logger.stock.error(`Insufficient stock for product`, { product: prod.title, available: variant.stock, needed: quantity });
         throw new Error(`Product '${prod.title}' is out of stock or has insufficient quantity. Available: ${variant.stock}`);
       }
-      
+
       variant.stock -= quantity;
       logger.stock.info(`Stock deducted for standard product`, { product: prod.title, variantId: variant.id, deducted: quantity, remaining: variant.stock });
       reservationItems.push({
@@ -369,29 +369,29 @@ exports.createOrder = async (req, res, next) => {
     // ==========================================
     // BACKEND EMAIL TRIGGER INTEGRATION
     // ==========================================
-   try {
-  // 1. Fetch user data safely from your existing DB reference
-  const user = await User.findById(req.user._id);
-  
-  if (user && user.email) {
-    const subject = `p2jmart Order Invoice - ${orderId}`;
-    
-    // 2. Generate template string passing user context and order payload data
-    const htmlBody = getOrderConfirmationTemplate(user, newOrder);
-    
-    // 3. FIX: Wrapped arguments inside an object configuration matches helper structure
-    sendEmail({
-      to: user.email,
-      subject: subject,
-      html: htmlBody
-    })
-      .then(() => console.log(`Confirmation email sent successfully to: ${user.email}`))
-      .catch((mailErr) => console.error('Nodemailer pipeline background failure:', mailErr));
-  }
-} catch (emailTriggerError) {
-  // We log the error but don't crash the request, ensuring users don't see a checkout error if email fails
-  console.error('Failed to resolve email profile details during database hook:', emailTriggerError);
-}
+    try {
+      // 1. Fetch user data safely from your existing DB reference
+      const user = await User.findById(req.user._id);
+
+      if (user && user.email) {
+        const subject = `p2jmart Order Invoice - ${orderId}`;
+
+        // 2. Generate template string passing user context and order payload data
+        const htmlBody = getOrderConfirmationTemplate(user, newOrder);
+
+        // 3. FIX: Wrapped arguments inside an object configuration matches helper structure
+        sendEmail({
+          to: user.email,
+          subject: subject,
+          html: htmlBody
+        })
+          .then(() => console.log(`Confirmation email sent successfully to: ${user.email}`))
+          .catch((mailErr) => console.error('Nodemailer pipeline background failure:', mailErr));
+      }
+    } catch (emailTriggerError) {
+      // We log the error but don't crash the request, ensuring users don't see a checkout error if email fails
+      console.error('Failed to resolve email profile details during database hook:', emailTriggerError);
+    }
     // ==========================================
 
     return res.status(201).json({
@@ -502,9 +502,9 @@ exports.getAdminReturnRequests = async (req, res, next) => {
     const orders = await Order.find({
       'items.returnStatus': { $ne: 'None' }
     })
-    .populate('user', 'name email phone')
-    .sort({ updatedAt: -1 })
-    .lean();
+      .populate('user', 'name email phone')
+      .sort({ updatedAt: -1 })
+      .lean();
 
     const returnRequests = [];
     orders.forEach(order => {

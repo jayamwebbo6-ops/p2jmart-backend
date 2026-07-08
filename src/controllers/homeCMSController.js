@@ -1,5 +1,6 @@
 const HomeCMS = require('../models/HomeCMS');
 const { saveBase64Image, deleteImageFile, getImageUrl } = require('../utils/imageHelper');
+const redisConfig = require('../config/redis');
 
 const CONFIG_KEY = 'home_cms_config';
 
@@ -19,6 +20,22 @@ const getRelativeImagePath = (urlOrPath) => {
 // 1. Get Home CMS Config
 exports.getHomeCMS = async (req, res) => {
   try {
+    // Try to get from Redis cache first
+    const cachedData = await redisConfig.getCache(redisConfig.CACHE_KEY);
+    if (cachedData) {
+      try {
+        const parsed = JSON.parse(cachedData);
+        return res.status(200).json({
+          success: true,
+          code: 301, // 301 means retrieved from Redis
+          source: 'redis',
+          data: parsed
+        });
+      } catch (parseErr) {
+        console.error('Failed to parse cached home CMS data, querying DB:', parseErr.message);
+      }
+    }
+
     let config = await HomeCMS.findOne({ key: CONFIG_KEY });
     if (!config) {
       // Create a default initial document matching original mock values
@@ -209,24 +226,31 @@ exports.getHomeCMS = async (req, res) => {
       bannerImage: getImageUrl(section.bannerImage)
     }));
 
+    const responseData = {
+      heroSlider: formattedHero,
+      offerBanners: formattedOffers,
+      categoryGrid: formattedCategoryGrid,
+      categorySections: formattedCategorySections,
+      featuredProducts: config.featuredProducts || [],
+      trendingProducts: config.trendingProducts || [],
+      exclusiveProducts: config.exclusiveProducts || [],
+      contactSetting: config.contactSetting || {},
+      privacyPolicy: config.privacyPolicy || [],
+      cancellationReturnPolicy: config.cancellationReturnPolicy || [],
+      deliveryPolicy: config.deliveryPolicy || [],
+      termsConditions: config.termsConditions || [],
+      freeShippingMinAmount: config.freeShippingMinAmount !== undefined ? config.freeShippingMinAmount : 1000,
+      flatShippingCost: config.flatShippingCost !== undefined ? config.flatShippingCost : 50
+    };
+
+    // Cache the response config in Redis for 24 hours (86400 seconds)
+    redisConfig.setCache(redisConfig.CACHE_KEY, JSON.stringify(responseData), 86400);
+
     res.status(200).json({
       success: true,
-      data: {
-        heroSlider: formattedHero,
-        offerBanners: formattedOffers,
-        categoryGrid: formattedCategoryGrid,
-        categorySections: formattedCategorySections,
-        featuredProducts: config.featuredProducts || [],
-        trendingProducts: config.trendingProducts || [],
-        exclusiveProducts: config.exclusiveProducts || [],
-        contactSetting: config.contactSetting || {},
-        privacyPolicy: config.privacyPolicy || [],
-        cancellationReturnPolicy: config.cancellationReturnPolicy || [],
-        deliveryPolicy: config.deliveryPolicy || [],
-        termsConditions: config.termsConditions || [],
-        freeShippingMinAmount: config.freeShippingMinAmount !== undefined ? config.freeShippingMinAmount : 1000,
-        flatShippingCost: config.flatShippingCost !== undefined ? config.flatShippingCost : 50
-      }
+      code: 201, // 201 means retrieved from server/DB
+      source: 'server',
+      data: responseData
     });
   } catch (err) {
     res.status(500).json({
@@ -470,6 +494,9 @@ exports.updateHomeCMS = async (req, res) => {
       ...section.toObject ? section.toObject() : section,
       bannerImage: getImageUrl(section.bannerImage)
     }));
+
+    // Invalidate/delete the home CMS config cache on updates
+    await redisConfig.deleteCache(redisConfig.CACHE_KEY);
 
     res.status(200).json({
       success: true,

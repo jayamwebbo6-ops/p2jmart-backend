@@ -143,9 +143,26 @@ app.use(`/${BASE_URL}/api`, apiRouter);
 // Global Error Handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(err.status || 500).json({
+
+  let statusCode = err.status || 500;
+  let message = err.message || 'Internal Server Error';
+
+  // Format MongoDB Duplicate Key (E11000) Error Messages
+  if (err.code === 11000) {
+    statusCode = 400;
+    const key = Object.keys(err.keyValue || {})[0];
+    if (key === 'email') {
+      message = 'A user with this email address already exists.';
+    } else if (key === 'googleId') {
+      message = 'This Google account is already linked to another user.';
+    } else {
+      message = `A duplicate value was found for field: ${key}.`;
+    }
+  }
+
+  res.status(statusCode).json({
     success: false,
-    message: err.message || 'Internal Server Error'
+    message: message
   });
 });
 

@@ -3,7 +3,7 @@ const router = express.Router();
 const shippingController = require('../controllers/shippingController');
 const { protectAdmin } = require('../middleware/auth');
 
-// Logging middleware for debugging
+            // Logging middleware for debugging
 router.use((req, res, next) => {
   console.log(`[SHIPPING ROUTE] ${req.method} ${req.originalUrl}`);
   next();

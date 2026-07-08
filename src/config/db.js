@@ -29,6 +29,24 @@ const connectDB = async () => {
     } catch (e) {
       // Ignore errors if collection doesn't exist
     }
+
+    // Drop existing non-sparse googleId_1 index on users collection so it can be rebuilt as sparse
+    try {
+      const db = mongoose.connection.db;
+      const collections = await db.listCollections({ name: 'users' }).toArray();
+      if (collections.length > 0) {
+        const collection = db.collection('users');
+        const indexes = await collection.indexes();
+        const hasGoogleIdIndex = indexes.some(idx => idx.name === 'googleId_1');
+        
+        if (hasGoogleIdIndex) {
+          await collection.dropIndex('googleId_1');
+          console.log("Successfully dropped old 'googleId_1' index. It will be recreated correctly as sparse.");
+        }
+      }
+    } catch (e) {
+      console.warn("Could not drop googleId_1 index:", e.message);
+    }
   } catch (error) {
     console.error(`Database connection error: ${error.message}`);
     process.exit(1);
