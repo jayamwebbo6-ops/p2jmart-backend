@@ -226,32 +226,31 @@ exports.getHomeCMS = async (req, res) => {
       bannerImage: getImageUrl(section.bannerImage)
     }));
 
-    const responseData = {
-      heroSlider: formattedHero,
-      offerBanners: formattedOffers,
-      categoryGrid: formattedCategoryGrid,
-      categorySections: formattedCategorySections,
-      featuredProducts: config.featuredProducts || [],
-      trendingProducts: config.trendingProducts || [],
-      exclusiveProducts: config.exclusiveProducts || [],
-      contactSetting: config.contactSetting || {},
-      privacyPolicy: config.privacyPolicy || [],
-      cancellationReturnPolicy: config.cancellationReturnPolicy || [],
-      deliveryPolicy: config.deliveryPolicy || [],
-      termsConditions: config.termsConditions || [],
-      freeShippingMinAmount: config.freeShippingMinAmount !== undefined ? config.freeShippingMinAmount : 1000,
-      flatShippingCost: config.flatShippingCost !== undefined ? config.flatShippingCost : 50
-    };
+   const updatedResponseData = {
+  heroSlider: formattedHero,
+  offerBanners: formattedOffers,
+  categoryGrid: formattedCategoryGrid,
+  categorySections: formattedCategorySections,
+  featuredProducts: config.featuredProducts || [],
+  trendingProducts: config.trendingProducts || [],
+  exclusiveProducts: config.exclusiveProducts || [],
+  contactSetting: config.contactSetting || {},
+  privacyPolicy: config.privacyPolicy || [],
+  cancellationReturnPolicy: config.cancellationReturnPolicy || [],
+  deliveryPolicy: config.deliveryPolicy || [],
+  termsConditions: config.termsConditions || [],
+  freeShippingMinAmount: config.freeShippingMinAmount !== undefined ? config.freeShippingMinAmount : 1000,
+  flatShippingCost: config.flatShippingCost !== undefined ? config.flatShippingCost : 50
+};
 
-    // Cache the response config in Redis for 24 hours (86400 seconds)
-    redisConfig.setCache(redisConfig.CACHE_KEY, JSON.stringify(responseData), 86400);
+// Actively overwrite the stale cache with fresh data for 24 hours
+await redisConfig.setCache(redisConfig.CACHE_KEY, JSON.stringify(updatedResponseData), 86400);
 
-    res.status(200).json({
-      success: true,
-      code: 201, // 201 means retrieved from server/DB
-      source: 'server',
-      data: responseData
-    });
+res.status(200).json({
+  success: true,
+  message: 'Home CMS configuration updated successfully',
+  data: updatedResponseData
+});
   } catch (err) {
     res.status(500).json({
       success: false,
