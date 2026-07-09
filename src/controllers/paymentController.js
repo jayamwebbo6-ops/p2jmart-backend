@@ -214,10 +214,8 @@ exports.createPayment = async (req, res, next) => {
       orderId: newOrder._id
     };
 
-    if (process.env.NODE_ENV === 'development') {
-      responseData.simulationUrl = `${process.env.BACKEND_URL || 'http://localhost:5000/api'}/payments/simulate-response?orderId=${newOrder.orderId}&status=Success`;
-      responseData.simulationFailureUrl = `${process.env.BACKEND_URL || 'http://localhost:5000/api'}/payments/simulate-response?orderId=${newOrder.orderId}&status=Failure`;
-    }
+    responseData.simulationUrl = `${process.env.BACKEND_URL || 'http://localhost:5000/api'}/payments/simulate-response?orderId=${newOrder.orderId}&status=Success`;
+    responseData.simulationFailureUrl = `${process.env.BACKEND_URL || 'http://localhost:5000/api'}/payments/simulate-response?orderId=${newOrder.orderId}&status=Failure`;
 
     return res.status(201).json(responseData);
   } catch (err) {
