@@ -12,6 +12,10 @@ const getAvailableStock = async (productId, variantId) => {
       logger.cart.warn('Product not found for stock check', { productId });
       return 0;
     }
+    if (product.isActive === false) {
+      logger.cart.warn('Product is inactive for stock check', { productId });
+      return 0;
+    }
 
     let variant = null;
 
@@ -57,16 +61,24 @@ const normalizeCartItem = (item) => {
   // Get valid relative path or URL, checking if file exists on disk and falling back to variant if not
   const resolvedPath = getValidProductImage(item.image, product);
 
-  // Calculate available stock for this item based on variant
+  // Calculate available stock and weight for this item based on variant
   let availableStock = 0;
-  if (product && product.variants && product.variants.length > 0) {
-    const variantId = item.selectedOptions?.variantId || '';
-    const variant = variantId
-      ? product.variants.find(v => v.id === variantId)
-      : product.variants[0];
+  let resolvedWeight = item.weight || 0;
+  if (product) {
+    if (product.variants && product.variants.length > 0) {
+      const variantId = item.selectedOptions?.variantId || '';
+      const variant = variantId
+        ? product.variants.find(v => String(v.id || v._id) === String(variantId))
+        : product.variants[0];
 
-    if (variant) {
-      availableStock = variant.stock || 0;
+      if (variant) {
+        availableStock = variant.stock || 0;
+        resolvedWeight = variant.weight ?? product.weight ?? 0;
+      } else {
+        resolvedWeight = product.weight ?? 0;
+      }
+    } else {
+      resolvedWeight = product.weight ?? 0;
     }
   }
 
@@ -76,7 +88,9 @@ const normalizeCartItem = (item) => {
     productId: product ? (product._id || product.id) : item.productId,
     image: getImageUrl(resolvedPath),
     freeShipping: product ? (product.freeShipping || 'No') : 'No',
-    availableStock: availableStock
+    weight: resolvedWeight,
+    availableStock: availableStock,
+    isActiveProduct: product ? (product.isActive !== false) : true
   };
 
   if (normalized.selectedOptions && normalized.selectedOptions.customImage) {

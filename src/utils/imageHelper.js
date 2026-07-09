@@ -10,7 +10,7 @@ const path = require('path');
  */
 const saveBase64Image = (base64Str, subFolder = 'avathar', prefix = 'avatar') => {
   if (!base64Str) return '';
-  
+
   // If it's already a saved path/URL, don't overwrite it
   if (!base64Str.startsWith('data:image')) {
     // Strip base URL if present to store clean relative path
@@ -20,26 +20,26 @@ const saveBase64Image = (base64Str, subFolder = 'avathar', prefix = 'avatar') =>
     }
     return base64Str;
   }
-  
+
   const matches = base64Str.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
   if (!matches || matches.length !== 3) {
     return base64Str;
   }
-  
+
   const ext = matches[1].split('/')[1] || 'png';
   const dataBuffer = Buffer.from(matches[2], 'base64');
-  
+
   // Create folder if not exists
   const uploadDir = path.join(__dirname, `../../uploads/${subFolder}`);
   if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
   }
-  
+
   const filename = `${prefix}-${Date.now()}-${Math.round(Math.random() * 1E9)}.${ext}`;
   const filepath = path.join(uploadDir, filename);
-  
+
   fs.writeFileSync(filepath, dataBuffer);
-  
+
   return `uploads/${subFolder}/${filename}`;
 };
 

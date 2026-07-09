@@ -4,44 +4,69 @@ const fs = require('fs');
 let redisClient = null;
 let isConnected = false;
 
-const REDIS_SOCKET_PATH = process.env.REDIS_SOCKET_PATH || '/home/jayam/.redis/redis.sock';
 const CACHE_KEY = 'home_cms_config_cache';
 
 const connectRedis = async () => {
-  // If socket path does not exist, skip connection to avoid infinite connection loops locally
-  if (!fs.existsSync(REDIS_SOCKET_PATH)) {
-    console.warn(`Redis socket not found at "${REDIS_SOCKET_PATH}". Skipping Redis initialization.`);
-    return;
+  const socketPath = process.env.REDIS_SOCKET_PATH;
+  const redisUrl = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
+  const dbIndex = process.env.REDIS_DB ? parseInt(process.env.REDIS_DB, 10) : 4;
+
+  const clientOptions = {
+    database: dbIndex
+  };
+
+  let connectionType = 'TCP';
+
+  // Check if Unix socket path is provided and exists
+  if (socketPath && fs.existsSync(socketPath)) {
+    clientOptions.socket = {
+      path: socketPath,
+      reconnectStrategy: (retries) => {
+        if (retries > 3) {
+          console.warn('Redis Unix socket reconnection stopped after 3 attempts.');
+          return false; // Stop reconnecting
+        }
+        return 2000; // Retry after 2 seconds
+      }
+    };
+    connectionType = 'Unix socket';
+    console.log(`Connecting to Redis via Unix socket: ${socketPath}`);
+  } else {
+    // Fallback to TCP connection
+    clientOptions.url = redisUrl;
+    clientOptions.socket = {
+      reconnectStrategy: (retries) => {
+        if (retries > 3) {
+          console.warn('Redis TCP reconnection stopped after 3 attempts.');
+          return false; // Stop reconnecting
+        }
+        return 2000; // Retry after 2 seconds
+      }
+    };
+    connectionType = `TCP (${redisUrl})`;
+    if (socketPath) {
+      console.warn(`Redis Unix socket not found at "${socketPath}". Falling back to TCP: ${redisUrl}`);
+    } else {
+      console.log(`Connecting to Redis via TCP: ${redisUrl}`);
+    }
   }
 
   try {
-    redisClient = redis.createClient({
-      socket: {
-        path: REDIS_SOCKET_PATH,
-        reconnectStrategy: (retries) => {
-          if (retries > 3) {
-            console.warn('Redis reconnection stopped after 3 attempts.');
-            return false; // Stop reconnecting
-          }
-          return 2000; // Retry after 2 seconds
-        }
-      },
-      database: 4
-    });
+    redisClient = redis.createClient(clientOptions);
 
     redisClient.on('error', (err) => {
-      console.warn('Redis connection/socket error:', err.message);
+      console.warn(`Redis connection error (${connectionType}):`, err.message);
       isConnected = false;
     });
 
     redisClient.on('connect', () => {
-      console.log('Redis connected successfully via Unix socket');
+      console.log(`Redis connected successfully via ${connectionType}`);
       isConnected = true;
     });
 
     await redisClient.connect();
   } catch (err) {
-    console.error('Failed to initialize Redis client:', err.message);
+    console.error(`Failed to connect to Redis (${connectionType}):`, err.message);
     isConnected = false;
   }
 };

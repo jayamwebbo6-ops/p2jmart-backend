@@ -4,7 +4,7 @@ const connectDB = async () => {
   try {
     const conn = await mongoose.connect(process.env.MONGODB_URI);
     console.log(`MongoDB Connected: ${conn.connection.host}`);
-    
+
     // Auto-seed default admin
     const Admin = require('../models/Admin');
     const adminCount = await Admin.countDocuments();
@@ -38,7 +38,7 @@ const connectDB = async () => {
         const collection = db.collection('users');
         const indexes = await collection.indexes();
         const hasGoogleIdIndex = indexes.some(idx => idx.name === 'googleId_1');
-        
+
         if (hasGoogleIdIndex) {
           await collection.dropIndex('googleId_1');
           console.log("Successfully dropped old 'googleId_1' index. It will be recreated correctly as sparse.");
