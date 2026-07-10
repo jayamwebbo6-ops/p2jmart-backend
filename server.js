@@ -48,6 +48,10 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Request Logging Middleware for API calls
+const requestLogger = require('./src/middleware/requestLogger.js');
+app.use(requestLogger);
+
 // Static Folders for Uploads
 app.use('/api/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use(`/${BASE_URL}/api/uploads`, express.static(path.join(__dirname, 'uploads')));
