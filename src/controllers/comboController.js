@@ -6,7 +6,7 @@ exports.getAllCombos = async (req, res, next) => {
   try {
     const combos = await ComboPack.find().populate({
       path: 'selectedItemIds',
-      select: 'title price image variants'
+      select: 'title price image variants weight stock isActive status'
     });
 
     const formattedCombos = combos.map(combo => {

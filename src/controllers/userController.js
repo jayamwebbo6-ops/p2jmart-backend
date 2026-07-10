@@ -34,9 +34,9 @@ exports.sendOTP = async (req, res, next) => {
     // Cooldown verification (1 minute)
     if (user.lastOtpSentAt && (Date.now() - new Date(user.lastOtpSentAt).getTime() < 60000)) {
       const secondsLeft = Math.ceil((60000 - (Date.now() - new Date(user.lastOtpSentAt).getTime())) / 1000);
-      return res.status(429).json({ 
-        success: false, 
-        message: `Please wait ${secondsLeft} seconds before requesting a new OTP.` 
+      return res.status(429).json({
+        success: false,
+        message: `Please wait ${secondsLeft} seconds before requesting a new OTP.`
       });
     }
 
@@ -55,7 +55,7 @@ exports.sendOTP = async (req, res, next) => {
     const emailSubject = 'Your Login OTP - P2J Mart';
     const emailText = `Your temporary login code is ${otp}. It will expire in 1 minute.`;
     const emailHtml = getUserLoginOTPTemplate(otp);
-    
+
     await sendEmail(lowerEmail, emailSubject, emailText, emailHtml);
     console.log("[TEST OTP] Code sent to", lowerEmail, "is:", otp);
 
@@ -157,7 +157,7 @@ exports.googleLogin = async (req, res, next) => {
         user.googleId = googleId;
         user.photo = photo || user.photo;
         // Mark as verified since Google confirms they own this mailbox
-        user.isVerified = true; 
+        user.isVerified = true;
         await user.save();
       } else {
         user = await User.create({
@@ -212,7 +212,7 @@ exports.updateProfile = async (req, res, next) => {
   try {
     const { name, phone, photo } = req.body;
     const user = await User.findById(req.user._id);
-    
+
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -222,7 +222,7 @@ exports.updateProfile = async (req, res, next) => {
 
     if (name) user.name = name;
     if (phone !== undefined) user.phone = phone;
-    
+
     if (photo !== undefined) {
       if (photo && photo.startsWith('data:image')) {
         if (user.photo && !user.photo.startsWith('http')) {
@@ -275,7 +275,7 @@ exports.adminGetAllUsers = async (req, res, next) => {
       {
         // 2. NEW: Join with your addresses collection using userId
         $lookup: {
-          from: 'addresses', 
+          from: 'addresses',
           localField: '_id',
           foreignField: 'userId',
           as: 'addressList'
@@ -293,7 +293,7 @@ exports.adminGetAllUsers = async (req, res, next) => {
           orders: { $size: '$orderHistory' },
           totalSpent: { $sum: '$orderHistory.total' },
           lastOrder: { $max: '$orderHistory.placedDate' },
-          
+
           // 3. Extract and format the default address or first address found
           address: {
             $let: {
@@ -377,7 +377,7 @@ exports.adminUpdateStatus = async (req, res, next) => {
 exports.adminDeleteUser = async (req, res, next) => {
   try {
     const { id } = req.params;
-    
+
     const user = await User.findById(id);
     if (!user) {
       return res.status(404).json({ success: false, message: 'User reference not discovered.' });
