@@ -77,12 +77,22 @@ exports.forgotPassword = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'No admin found with that email' });
     }
 
+    // Cooldown verification (1 minute)
+    if (admin.lastOtpSentAt && (Date.now() - new Date(admin.lastOtpSentAt).getTime() < 60000)) {
+      const secondsLeft = Math.ceil((60000 - (Date.now() - new Date(admin.lastOtpSentAt).getTime())) / 1000);
+      return res.status(429).json({ 
+        success: false, 
+        message: `Please wait ${secondsLeft} seconds before requesting a new OTP.` 
+      });
+    }
+
     // 1. Generate 6 digit numeric code
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
     // 2. Save code details directly to the database document
     admin.resetOtp = otp;
-    admin.resetOtpExpire = Date.now() + 10 * 60 * 1000; // 10 Minute window
+    admin.resetOtpExpire = Date.now() + 1 * 60 * 1000; // 1 Minute window
+    admin.lastOtpSentAt = new Date();
     await admin.save();
 
     // 3. Compile the structural HTML layout using the reusable function
@@ -92,7 +102,7 @@ exports.forgotPassword = async (req, res, next) => {
     await sendEmail({
       to: admin.email,
       subject: 'Admin Portal - Password Reset OTP',
-      text: `Your password reset OTP is: ${otp}. It is valid for 10 minutes.`,
+      text: `Your password reset OTP is: ${otp}. It is valid for 1 minute.`,
       html: htmlBody
     });
 

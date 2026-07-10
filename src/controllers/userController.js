@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { saveBase64Image, getImageUrl, deleteImageFile } = require('../utils/imageHelper');
 const { sendEmail } = require('../utils/emailHelper'); // Helper that uses Nodemailer underneath
+const { getUserLoginOTPTemplate } = require('../utils/emailTemplate');
 const Order = require('../models/Order'); // Ensure your Order model path is correct
 
 
@@ -24,27 +25,38 @@ exports.sendOTP = async (req, res, next) => {
 
     const lowerEmail = email.toLowerCase();
 
-    // Generate a 6-digit cryptographic-style numeric OTP string
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 Minutes Expiry
-
     // Find user or create a temporary skeleton if they are logging in for the first time
     let user = await User.findOne({ email: lowerEmail });
     if (!user) {
       user = new User({ email: lowerEmail });
     }
 
+    // Cooldown verification (1 minute)
+    if (user.lastOtpSentAt && (Date.now() - new Date(user.lastOtpSentAt).getTime() < 60000)) {
+      const secondsLeft = Math.ceil((60000 - (Date.now() - new Date(user.lastOtpSentAt).getTime())) / 1000);
+      return res.status(429).json({ 
+        success: false, 
+        message: `Please wait ${secondsLeft} seconds before requesting a new OTP.` 
+      });
+    }
+
+    // Generate a 6-digit cryptographic-style numeric OTP string
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpExpiresAt = new Date(Date.now() + 1 * 60 * 1000); // 1 Minute Expiry
+
     // Assign the OTP parameters
     user.otp = otp;
     user.otpExpiresAt = otpExpiresAt;
+    user.lastOtpSentAt = new Date();
     user.isVerified = false; // Reset verification status until OTP is matched
     await user.save();
 
     // Send the email via Nodemailer utility
     const emailSubject = 'Your Login OTP - P2J Mart';
-    const emailText = `Your temporary login code is ${otp}. It will expire in 5 minutes.`;
+    const emailText = `Your temporary login code is ${otp}. It will expire in 1 minute.`;
+    const emailHtml = getUserLoginOTPTemplate(otp);
     
-    await sendEmail(lowerEmail, emailSubject, emailText);
+    await sendEmail(lowerEmail, emailSubject, emailText, emailHtml);
     console.log("[TEST OTP] Code sent to", lowerEmail, "is:", otp);
 
     return res.status(200).json({

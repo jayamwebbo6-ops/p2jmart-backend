@@ -183,7 +183,7 @@ exports.getForgotPasswordTemplate = (otp) => {
 
       <div style="border: 1px solid #e2e8f0; padding: 20px; border-radius: 12px; font-size: 14px; margin-bottom: 24px; background-color: #ffffff; line-height: 1.6;">
         <p style="margin: 0 0 12px 0; color: #475569;">We received a request to reset the password for your Admin Portal account.</p>
-        <p style="margin: 0 0 20px 0; color: #475569;">Use the following One-Time Password (OTP) to proceed. This code is valid for <strong>10 minutes</strong>:</p>
+        <p style="margin: 0 0 20px 0; color: #475569;">Use the following One-Time Password (OTP) to proceed. This code is valid for <strong>1 minute</strong>:</p>
         
         <div style="background-color: #f8fafc; border: 1px dashed #cbd5e1; padding: 16px; text-align: center; font-size: 28px; font-weight: 700; letter-spacing: 6px; color: #10b981; margin: 16px 0; border-radius: 8px; font-family: monospace;">
           ${otp}
@@ -193,6 +193,42 @@ exports.getForgotPasswordTemplate = (otp) => {
       <div style="text-align: center; border-top: 1px solid #f1f5f9; padding-top: 16px; margin-top: 8px;">
         <p style="font-size: 12px; color: #94a3b8; margin: 0 0 4px 0;">If you did not request a password change, please ignore this email or change your security credentials immediately.</p>
         <p style="font-size: 12px; color: #94a3b8; margin: 0;">This transmission was dispatched by the automated security hook on p2jmart.</p>
+      </div>
+
+    </div>
+  `;
+};
+
+/**
+ * Generates an HTML confirmation template for user login OTP verification
+ * @param {String} otp - The 6-digit random numeric verification token
+ */
+exports.getUserLoginOTPTemplate = (otp) => {
+  return `
+    <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 500px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 16px; color: #333; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+      
+      <div style="text-align: center; margin-bottom: 24px; border-bottom: 1px solid #f1f5f9; padding-bottom: 20px;">
+        <h1 style="color: #003147; margin: 0 0 8px 0; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">P2J Mart</h1>
+        <h2 style="color: #1e293b; margin: 0 0 4px 0; font-size: 20px;">Verification Code 🔑</h2>
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Your One-Time Password for secure login</p>
+      </div>
+
+      <div style="border: 1px solid #e2e8f0; padding: 20px; border-radius: 12px; font-size: 14px; margin-bottom: 24px; background-color: #ffffff; line-height: 1.6;">
+        <p style="margin: 0 0 12px 0; color: #475569;">Hello,</p>
+        <p style="margin: 0 0 12px 0; color: #475569;">To complete your sign-in, please use the 6-digit verification code below. This code is valid for exactly <strong>1 minute</strong> and is active for one-time use:</p>
+        
+        <div style="background-color: #f8fafc; border: 1px dashed #cbd5e1; padding: 16px; text-align: center; font-size: 32px; font-weight: 800; letter-spacing: 8px; color: #003147; margin: 20px 0; border-radius: 12px; font-family: monospace;">
+          ${otp}
+        </div>
+
+        <p style="margin: 20px 0 0 0; color: #ef4444; font-size: 12px; font-weight: 600; text-align: center;">
+          ⚠️ For security reasons, do not share this code with anyone.
+        </p>
+      </div>
+
+      <div style="text-align: center; border-top: 1px solid #f1f5f9; padding-top: 16px; margin-top: 8px;">
+        <p style="font-size: 12px; color: #94a3b8; margin: 0 0 4px 0;">If you did not request this code, you can safely ignore this email.</p>
+        <p style="font-size: 12px; color: #94a3b8; margin: 0;">This transmission was dispatched by the automated security hook on P2J Mart.</p>
       </div>
 
     </div>

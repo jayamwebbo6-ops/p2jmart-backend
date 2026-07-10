@@ -34,6 +34,10 @@ const AdminSchema = new mongoose.Schema({
   resetOtpExpire: {
     type: Date,
     default: undefined
+  },
+  lastOtpSentAt: {
+    type: Date,
+    default: null
   }
 }, {
   timestamps: true

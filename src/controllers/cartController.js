@@ -56,41 +56,110 @@ const getAvailableStock = async (productId, variantId) => {
   }
 };
 
-const normalizeCartItem = (item) => {
-  const product = item.productId;
-  // Get valid relative path or URL, checking if file exists on disk and falling back to variant if not
-  const resolvedPath = getValidProductImage(item.image, product);
+const asyncNormalizeCartItem = async (item) => {
+  const ComboPack = require('../models/ComboPack');
+  const Product = require('../models/Product');
 
-  // Calculate available stock and weight for this item based on variant
+  const product = item.productId;
   let availableStock = 0;
   let resolvedWeight = item.weight || 0;
-  if (product) {
-    if (product.variants && product.variants.length > 0) {
-      const variantId = item.selectedOptions?.variantId || '';
-      const variant = variantId
-        ? product.variants.find(v => String(v.id || v._id) === String(variantId))
-        : product.variants[0];
+  let isActiveProduct = true;
 
-      if (variant) {
-        availableStock = variant.stock || 0;
-        resolvedWeight = variant.weight ?? product.weight ?? 0;
+  if (item.isComboProduct) {
+    const combo = await ComboPack.findById(item.productId).lean();
+    if (!combo || combo.status === false) {
+      isActiveProduct = false;
+      availableStock = 0;
+    } else {
+      let minStock = Infinity;
+      let allComponentsActive = true;
+      let calculatedWeight = 0;
+
+      if (combo.selectedVariants && combo.selectedVariants.length > 0) {
+        for (const sv of combo.selectedVariants) {
+          const prod = await Product.findById(sv.productId).lean();
+          if (!prod || prod.isActive === false) {
+            allComponentsActive = false;
+            minStock = 0;
+            break;
+          }
+          const variant = prod.variants.find(v => String(v.id || v._id) === String(sv.variantId));
+          if (!variant) {
+            allComponentsActive = false;
+            minStock = 0;
+            break;
+          }
+          const variantStock = Math.max(0, Number(variant.stock) || 0);
+          if (variantStock < minStock) {
+            minStock = variantStock;
+          }
+          calculatedWeight += Number(variant.weight ?? prod.weight ?? 0);
+        }
+      } else {
+        const included = item.includedProducts || [];
+        for (const subItem of included) {
+          const subId = subItem.productId || subItem.id || subItem._id;
+          const prod = await Product.findById(subId).lean();
+          if (!prod || prod.isActive === false) {
+            allComponentsActive = false;
+            minStock = 0;
+            break;
+          }
+          const variant = prod.variants && prod.variants.length > 0 ? prod.variants[0] : null;
+          if (!variant) {
+            allComponentsActive = false;
+            minStock = 0;
+            break;
+          }
+          const variantStock = Math.max(0, Number(variant.stock) || 0);
+          if (variantStock < minStock) {
+            minStock = variantStock;
+          }
+          calculatedWeight += Number(variant.weight ?? prod.weight ?? 0);
+        }
+      }
+
+      isActiveProduct = allComponentsActive;
+      availableStock = minStock === Infinity ? 0 : minStock;
+      if (calculatedWeight > 0) {
+        resolvedWeight = calculatedWeight;
+      }
+    }
+  } else {
+    if (product) {
+      isActiveProduct = product.isActive !== false;
+      if (product.variants && product.variants.length > 0) {
+        const variantId = item.selectedOptions?.variantId || '';
+        const variant = variantId
+          ? product.variants.find(v => String(v.id || v._id) === String(variantId))
+          : product.variants[0];
+
+        if (variant) {
+          availableStock = variant.stock || 0;
+          resolvedWeight = variant.weight ?? product.weight ?? 0;
+        } else {
+          resolvedWeight = product.weight ?? 0;
+        }
       } else {
         resolvedWeight = product.weight ?? 0;
       }
     } else {
-      resolvedWeight = product.weight ?? 0;
+      isActiveProduct = false;
+      availableStock = 0;
     }
   }
+
+  const resolvedPath = getValidProductImage(item.image, !item.isComboProduct ? product : null);
 
   const normalized = {
     ...item,
     id: item._id,
     productId: product ? (product._id || product.id) : item.productId,
     image: getImageUrl(resolvedPath),
-    freeShipping: product ? (product.freeShipping || 'No') : 'No',
+    freeShipping: (!item.isComboProduct && product) ? (product.freeShipping || 'No') : 'No',
     weight: resolvedWeight,
     availableStock: availableStock,
-    isActiveProduct: product ? (product.isActive !== false) : true
+    isActiveProduct: isActiveProduct
   };
 
   if (normalized.selectedOptions && normalized.selectedOptions.customImage) {
@@ -108,7 +177,7 @@ exports.getCart = async (req, res, next) => {
     const items = await CartItem.find({ user: req.user._id }).populate('productId').lean();
     return res.status(200).json({
       success: true,
-      data: items.map(normalizeCartItem)
+      data: await Promise.all(items.map(asyncNormalizeCartItem))
     });
   } catch (err) {
     next(err);
@@ -185,7 +254,7 @@ exports.addToCart = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       message: 'Item added to cart successfully',
-      data: items.map(normalizeCartItem)
+      data: await Promise.all(items.map(asyncNormalizeCartItem))
     });
   } catch (err) {
     logger.cart.error('Unexpected error in addToCart', { userId: req.user?._id, error: err.message });
@@ -243,7 +312,7 @@ exports.updateCartItem = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       message: 'Cart item updated',
-      data: items.map(normalizeCartItem)
+      data: await Promise.all(items.map(asyncNormalizeCartItem))
     });
   } catch (err) {
     logger.cart.error('Failed to update cart item', { userId: req.user?._id, error: err.message });
@@ -261,7 +330,7 @@ exports.removeCartItem = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       message: 'Cart item removed',
-      data: items.map(normalizeCartItem)
+      data: await Promise.all(items.map(asyncNormalizeCartItem))
     });
   } catch (err) {
     logger.cart.error('Failed to remove cart item', { userId: req.user?._id, error: err.message });
