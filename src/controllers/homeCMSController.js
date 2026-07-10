@@ -337,11 +337,12 @@ exports.updateHomeCMS = async (req, res) => {
       }
     }
 
-    // Process Category Grid images
+    // Process Category Grid images (limited to 3 max)
     const processedCategoryGrid = [];
     if (Array.isArray(categoryGrid)) {
-      for (let i = 0; i < categoryGrid.length; i++) {
-        const card = categoryGrid[i];
+      const limitedCategoryGrid = categoryGrid.slice(0, 3);
+      for (let i = 0; i < limitedCategoryGrid.length; i++) {
+        const card = limitedCategoryGrid[i];
         let savedPath = '';
         if (card.image) {
           const cleanImage = getRelativeImagePath(card.image);
@@ -380,7 +381,7 @@ exports.updateHomeCMS = async (req, res) => {
           title: section.title || '',
           bannerImage: savedBannerPath,
           bannerLink: section.bannerLink || '',
-          productIds: Array.isArray(section.productIds) ? section.productIds : []
+          productIds: Array.isArray(section.productIds) ? section.productIds.slice(0, 4) : []
         });
       }
     }
@@ -389,9 +390,9 @@ exports.updateHomeCMS = async (req, res) => {
     config.offerBanners = processedOffers;
     config.categoryGrid = processedCategoryGrid;
     config.categorySections = processedCategorySections;
-    config.featuredProducts = Array.isArray(featuredProducts) ? featuredProducts : [];
-    config.trendingProducts = Array.isArray(trendingProducts) ? trendingProducts : [];
-    config.exclusiveProducts = Array.isArray(exclusiveProducts) ? exclusiveProducts : [];
+    config.featuredProducts = Array.isArray(featuredProducts) ? featuredProducts.slice(0, 4) : [];
+    config.trendingProducts = Array.isArray(trendingProducts) ? trendingProducts.slice(0, 4) : [];
+    config.exclusiveProducts = Array.isArray(exclusiveProducts) ? exclusiveProducts.slice(0, 4) : [];
 
     // Save dynamic settings and policies if provided
     if (contactSetting) {
