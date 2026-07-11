@@ -56,18 +56,132 @@ const getAvailableStock = async (productId, variantId) => {
   }
 };
 
+
+// Helper function to resolve stock for either a standard product or combo product
+const resolveAvailableStock = async (productId, isComboProduct, includedProducts = [], variantId = '') => {
+  const Product = require('../models/Product');
+  
+  if (isComboProduct) {
+    const ComboPack = require('../models/ComboPack');
+    const mongoose = require('mongoose');
+    
+    try {
+      const combo = mongoose.isValidObjectId(productId) 
+        ? await ComboPack.findById(productId).lean() 
+        : null;
+        
+      let minStock = Infinity;
+      if (combo && combo.selectedVariants && combo.selectedVariants.length > 0) {
+        for (const sv of combo.selectedVariants) {
+          const prod = await Product.findById(sv.productId).lean();
+          if (!prod || prod.isActive === false) {
+            minStock = 0;
+            break;
+          }
+          const variant = prod.variants?.find(v => String(v.id || v._id) === String(sv.variantId));
+          if (!variant) {
+            minStock = 0;
+            break;
+          }
+          const variantStock = Math.max(0, Number(variant.stock) || 0);
+          if (variantStock < minStock) {
+            minStock = variantStock;
+          }
+        }
+      } else {
+        const included = includedProducts || [];
+        for (const subItem of included) {
+          const subId = subItem.productId || subItem.id || subItem._id;
+          const prod = await Product.findById(subId).lean();
+          if (!prod || prod.isActive === false) {
+            minStock = 0;
+            break;
+          }
+          const vId = subItem.variantId || '';
+          const variant = vId && prod.variants && prod.variants.length > 0
+            ? prod.variants.find(v => String(v.id || v._id) === String(vId))
+            : (prod.variants && prod.variants.length > 0 ? prod.variants[0] : null);
+          if (!variant) {
+            minStock = 0;
+            break;
+          }
+          const variantStock = Math.max(0, Number(variant.stock) || 0);
+          if (variantStock < minStock) {
+            minStock = variantStock;
+          }
+        }
+      }
+      return minStock === Infinity ? 0 : minStock;
+    } catch (err) {
+      logger.cart.error('Error resolving combo available stock', { productId, error: err.message });
+      return 0;
+    }
+  } else {
+    return await getAvailableStock(productId, variantId);
+  }
+};
+
 const asyncNormalizeCartItem = async (item) => {
   const ComboPack = require('../models/ComboPack');
   const Product = require('../models/Product');
+  const mongoose = require('mongoose');
 
-  const product = item.productId;
+  let product = null;
+  if (!item.isComboProduct && mongoose.isValidObjectId(item.productId)) {
+    product = await Product.findById(item.productId).lean();
+  }
+
   let availableStock = 0;
   let resolvedWeight = item.weight || 0;
   let isActiveProduct = true;
 
   if (item.isComboProduct) {
-    const combo = await ComboPack.findById(item.productId).lean();
-    if (!combo || combo.status === false) {
+    const combo = mongoose.isValidObjectId(item.productId)
+      ? await ComboPack.findById(item.productId).lean()
+      : null;
+
+    if (!combo) {
+      // It's a customized combo pack or combo not found
+      let minStock = Infinity;
+      let allComponentsActive = true;
+      let calculatedWeight = 0;
+
+      const included = item.includedProducts || [];
+      if (included.length === 0) {
+        isActiveProduct = false;
+        availableStock = 0;
+      } else {
+        for (const subItem of included) {
+          const subId = subItem.productId || subItem.id || subItem._id;
+          const prod = await Product.findById(subId).lean();
+          if (!prod || prod.isActive === false) {
+            allComponentsActive = false;
+            minStock = 0;
+            break;
+          }
+          const vId = subItem.variantId || '';
+          const variant = vId && prod.variants && prod.variants.length > 0
+            ? prod.variants.find(v => String(v.id || v._id) === String(vId))
+            : (prod.variants && prod.variants.length > 0 ? prod.variants[0] : null);
+          if (!variant) {
+            allComponentsActive = false;
+            minStock = 0;
+            break;
+          }
+          const variantStock = Math.max(0, Number(variant.stock) || 0);
+          if (variantStock < minStock) {
+            minStock = variantStock;
+          }
+          calculatedWeight += Number(variant.weight ?? prod.weight ?? 0);
+        }
+
+        isActiveProduct = allComponentsActive;
+        availableStock = minStock === Infinity ? 0 : minStock;
+        if (calculatedWeight > 0) {
+          resolvedWeight = calculatedWeight;
+        }
+      }
+    } else if (combo.status === false) {
       isActiveProduct = false;
       availableStock = 0;
     } else {
@@ -174,7 +288,7 @@ const asyncNormalizeCartItem = async (item) => {
 
 exports.getCart = async (req, res, next) => {
   try {
-    const items = await CartItem.find({ user: req.user._id }).populate('productId').lean();
+    const items = await CartItem.find({ user: req.user._id }).lean();
     return res.status(200).json({
       success: true,
       data: await Promise.all(items.map(asyncNormalizeCartItem))
@@ -196,8 +310,8 @@ exports.addToCart = async (req, res, next) => {
       });
     }
 
-    // Check stock availability
-    const availableStock = await getAvailableStock(productId, variantId);
+    // Check stock availability (resolving for combo component-based or standard products)
+    const availableStock = await resolveAvailableStock(productId, isComboProduct, includedProducts, variantId);
 
     // Get existing cart item if any
     let cartItem = await CartItem.findOne({ user: req.user._id, productId });
@@ -249,7 +363,7 @@ exports.addToCart = async (req, res, next) => {
       });
     }
 
-    const items = await CartItem.find({ user: req.user._id }).populate('productId').lean();
+    const items = await CartItem.find({ user: req.user._id }).lean();
     logger.cart.info(`Item ${cartItem._id ? 'updated' : 'added'} in cart`, { userId: req.user._id, productId, title, quantity, price, isComboProduct });
     return res.status(200).json({
       success: true,
@@ -278,7 +392,12 @@ exports.updateCartItem = async (req, res, next) => {
     // If quantity is being updated, validate stock
     if (payload.quantity !== undefined && payload.quantity !== cartItem.quantity) {
       const variantId = payload.variantId || cartItem.selectedOptions?.variantId || '';
-      const availableStock = await getAvailableStock(cartItem.productId, variantId);
+      const availableStock = await resolveAvailableStock(
+        cartItem.productId,
+        cartItem.isComboProduct,
+        cartItem.includedProducts,
+        variantId
+      );
 
       if (payload.quantity > availableStock) {
         logger.cart.warn('Stock limit exceeded on updateCartItem', {
@@ -307,7 +426,7 @@ exports.updateCartItem = async (req, res, next) => {
     Object.assign(cartItem, payload);
     await cartItem.save();
 
-    const items = await CartItem.find({ user: req.user._id }).populate('productId').lean();
+    const items = await CartItem.find({ user: req.user._id }).lean();
     logger.cart.info('Cart item updated', { userId: req.user._id, cartItemId: id, newQuantity: payload.quantity });
     return res.status(200).json({
       success: true,
@@ -326,7 +445,7 @@ exports.removeCartItem = async (req, res, next) => {
     await CartItem.deleteOne({ _id: id, user: req.user._id });
     logger.cart.info('Cart item removed', { userId: req.user._id, cartItemId: id });
 
-    const items = await CartItem.find({ user: req.user._id }).populate('productId').lean();
+    const items = await CartItem.find({ user: req.user._id }).lean();
     return res.status(200).json({
       success: true,
       message: 'Cart item removed',
@@ -352,3 +471,4 @@ exports.clearCart = async (req, res, next) => {
     next(err);
   }
 };
+
