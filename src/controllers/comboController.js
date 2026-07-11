@@ -44,6 +44,17 @@ exports.createCombo = async (req, res, next) => {
       });
     }
 
+    // Validate that none of the selected products are customizable
+    const Product = require('../models/Product');
+    const products = await Product.find({ _id: { $in: selectedItemIds } });
+    const hasCustomProduct = products.some(p => p.customizeProduct === 'Yes');
+    if (hasCustomProduct) {
+      return res.status(400).json({
+        success: false,
+        message: 'Customizable products are not allowed to be part of a combo bundle.'
+      });
+    }
+
     const newCombo = new ComboPack({
       name,
       offerPrice: Number(offerPrice) || 0,
@@ -81,6 +92,19 @@ exports.updateCombo = async (req, res, next) => {
         success: false,
         message: 'Combo pack not found.'
       });
+    }
+
+    if (selectedItemIds !== undefined && selectedItemIds.length > 0) {
+      // Validate that none of the selected products are customizable
+      const Product = require('../models/Product');
+      const products = await Product.find({ _id: { $in: selectedItemIds } });
+      const hasCustomProduct = products.some(p => p.customizeProduct === 'Yes');
+      if (hasCustomProduct) {
+        return res.status(400).json({
+          success: false,
+          message: 'Customizable products are not allowed to be part of a combo bundle.'
+        });
+      }
     }
 
     if (name !== undefined) combo.name = name;
