@@ -9,7 +9,7 @@ const CACHE_KEY = 'home_cms_config_cache';
 const connectRedis = async () => {
   const socketPath = process.env.REDIS_SOCKET_PATH;
   const redisUrl = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
-  const dbIndex = process.env.REDIS_DB ? parseInt(process.env.REDIS_DB, 10) : 4;
+  const dbIndex = process.env.REDIS_DB ? parseInt(process.env.REDIS_DB, 10) : 1;
 
   const clientOptions = {
     database: dbIndex
