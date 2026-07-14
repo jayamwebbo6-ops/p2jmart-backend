@@ -23,28 +23,36 @@ const BASE_URL = process.env.BASE_URL || 'p2jmart';
 const apiRouter = express.Router();
 
 // Middleware
-app.use(cors({
-  origin: function(origin, callback) {
-    // Allow requests with no origin (like mobile apps or server-to-server requests)
-    if (!origin) return callback(null, true);
+app.use((req, res, next) => {
+  // Completely bypass CORS for payment callback and simulation routes
+  if (req.path.includes('/payments/response') || req.path.includes('/simulate-response')) {
+    return cors({ origin: true, credentials: true })(req, res, next);
+  }
 
-    // Use ALLOWED_ORIGINS from env (comma-separated) or fallback to FRONTEND_URL
-    const allowedOrigins = process.env.ALLOWED_ORIGINS 
-      ? process.env.ALLOWED_ORIGINS.split(',').map(url => url.trim().replace(/\/$/, ''))
-      : [
+  // Standard CORS check for all other API endpoints
+  return cors({
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps or server-to-server requests)
+      if (!origin) return callback(null, true);
+
+      // Use ALLOWED_ORIGINS from env (comma-separated) or fallback to FRONTEND_URL
+      const allowedOrigins = process.env.ALLOWED_ORIGINS
+        ? process.env.ALLOWED_ORIGINS.split(',').map(url => url.trim().replace(/\/$/, ''))
+        : [
           process.env.FRONTEND_URL ? process.env.FRONTEND_URL.replace(/\/$/, '') : 'http://localhost:5173'
         ];
 
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-    
-    return callback(new Error('CORS policy violation: Origin not allowed'));
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
-}));
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error('CORS policy violation: Origin not allowed'));
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
+  })(req, res, next);
+});
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -86,10 +94,10 @@ apiRouter.use('/attributes', attributeRoutes);
 
 const UserReview = require('./src/routes/UserReviewRoute.js');
 apiRouter.use('/reviews', UserReview);
- 
+
 // contact form Routes
 const contactUs = require('./src/routes/contactRoutes.js');
-apiRouter.use('/contact-us', contactUs );
+apiRouter.use('/contact-us', contactUs);
 
 const salesReportRoutes = require('./src/routes/Salesreportroutes.js');
 apiRouter.use('/sales-report', salesReportRoutes);

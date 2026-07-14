@@ -8,5 +8,8 @@ module.exports = {
   cancelUrl: `${process.env.BACKEND_URL || 'http://localhost:5000/api'}/payments/response`,
   paymentUrl: process.env.NODE_ENV === 'production'
     ? 'https://secure.ccavenue.com/transaction/transaction.do?command=initiateTransaction'
-    : 'https://test.ccavenue.com/transaction/transaction.do?command=initiateTransaction'
+    : 'https://test.ccavenue.com/transaction/transaction.do?command=initiateTransaction',
+  apiUrl: process.env.NODE_ENV === 'production'
+    ? 'https://secure.ccavenue.com/apis/servlet/DoWebTrans'
+    : 'https://apitest.ccavenue.com/apis/servlet/DoWebTrans'
 };
