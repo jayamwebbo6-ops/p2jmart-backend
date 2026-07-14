@@ -284,118 +284,162 @@ exports.updateHomeCMS = async (req, res) => {
       config = new HomeCMS({ key: CONFIG_KEY });
     }
 
-    // Keep copies of old images to delete later if they are replaced or removed
-    const oldHeroImages = (config.heroSlider || []).map(s => s.image).filter(Boolean);
-    const oldOfferImages = (config.offerBanners || []).map(b => b.image).filter(Boolean);
-    const oldCategoryGridImages = (config.categoryGrid || []).map(c => c.image).filter(Boolean);
-    const oldCategorySectionImages = (config.categorySections || []).map(s => s.bannerImage).filter(Boolean);
-
-    // Process Hero Slider images
-    const processedHero = [];
-    if (Array.isArray(heroSlider)) {
-      for (let i = 0; i < heroSlider.length; i++) {
-        const slide = heroSlider[i];
-        let savedPath = '';
-        if (slide.image) {
-          const cleanImage = getRelativeImagePath(slide.image);
-          if (cleanImage.startsWith('data:image')) {
-            savedPath = saveBase64Image(cleanImage, 'homes', `hero-slide-${i}`);
-          } else {
-            savedPath = cleanImage;
+    // Process Hero Slider images only if provided
+    if (heroSlider !== undefined) {
+      const oldHeroImages = (config.heroSlider || []).map(s => s.image).filter(Boolean);
+      const processedHero = [];
+      if (Array.isArray(heroSlider)) {
+        for (let i = 0; i < heroSlider.length; i++) {
+          const slide = heroSlider[i];
+          let savedPath = '';
+          if (slide.image) {
+            const cleanImage = getRelativeImagePath(slide.image);
+            if (cleanImage.startsWith('data:image')) {
+              savedPath = saveBase64Image(cleanImage, 'homes', `hero-slide-${i}`);
+            } else {
+              savedPath = cleanImage;
+            }
           }
+          processedHero.push({
+            title: slide.title || '',
+            description: slide.description || '',
+            btnLabel: slide.btnLabel || '',
+            btnLink: slide.btnLink || '',
+            image: savedPath
+          });
         }
-        processedHero.push({
-          title: slide.title || '',
-          description: slide.description || '',
-          btnLabel: slide.btnLabel || '',
-          btnLink: slide.btnLink || '',
-          image: savedPath
-        });
       }
+      config.heroSlider = processedHero;
+
+      // Clean up replaced images from server storage
+      const newHeroImages = processedHero.map(s => s.image).filter(Boolean);
+      oldHeroImages.forEach(oldImg => {
+        if (!newHeroImages.includes(oldImg)) {
+          deleteImageFile(oldImg);
+        }
+      });
     }
 
-    // Process Offer Banners images
-    const processedOffers = [];
-    if (Array.isArray(offerBanners)) {
-      for (let i = 0; i < offerBanners.length; i++) {
-        const banner = offerBanners[i];
-        let savedPath = '';
-        if (banner.image) {
-          const cleanImage = getRelativeImagePath(banner.image);
-          if (cleanImage.startsWith('data:image')) {
-            savedPath = saveBase64Image(cleanImage, 'homes', `offer-banner-${i}`);
-          } else {
-            savedPath = cleanImage;
+    // Process Offer Banners images only if provided
+    if (offerBanners !== undefined) {
+      const oldOfferImages = (config.offerBanners || []).map(b => b.image).filter(Boolean);
+      const processedOffers = [];
+      if (Array.isArray(offerBanners)) {
+        for (let i = 0; i < offerBanners.length; i++) {
+          const banner = offerBanners[i];
+          let savedPath = '';
+          if (banner.image) {
+            const cleanImage = getRelativeImagePath(banner.image);
+            if (cleanImage.startsWith('data:image')) {
+              savedPath = saveBase64Image(cleanImage, 'homes', `offer-banner-${i}`);
+            } else {
+              savedPath = cleanImage;
+            }
           }
+          processedOffers.push({
+            tagline: banner.tagline || '',
+            title: banner.title || '',
+            btnLink: banner.btnLink || '',
+            image: savedPath
+          });
         }
-        processedOffers.push({
-          tagline: banner.tagline || '',
-          title: banner.title || '',
-          btnLink: banner.btnLink || '',
-          image: savedPath
-        });
       }
+      config.offerBanners = processedOffers;
+
+      // Clean up replaced images from server storage
+      const newOfferImages = processedOffers.map(b => b.image).filter(Boolean);
+      oldOfferImages.forEach(oldImg => {
+        if (!newOfferImages.includes(oldImg)) {
+          deleteImageFile(oldImg);
+        }
+      });
     }
 
-    // Process Category Grid images (limited to 3 max)
-    const processedCategoryGrid = [];
-    if (Array.isArray(categoryGrid)) {
-      const limitedCategoryGrid = categoryGrid.slice(0, 3);
-      for (let i = 0; i < limitedCategoryGrid.length; i++) {
-        const card = limitedCategoryGrid[i];
-        let savedPath = '';
-        if (card.image) {
-          const cleanImage = getRelativeImagePath(card.image);
-          if (cleanImage.startsWith('data:image')) {
-            savedPath = saveBase64Image(cleanImage, 'homes', `category-grid-${i}`);
-          } else {
-            savedPath = cleanImage;
+    // Process Category Grid images only if provided
+    if (categoryGrid !== undefined) {
+      const oldCategoryGridImages = (config.categoryGrid || []).map(c => c.image).filter(Boolean);
+      const processedCategoryGrid = [];
+      if (Array.isArray(categoryGrid)) {
+        const limitedCategoryGrid = categoryGrid.slice(0, 3);
+        for (let i = 0; i < limitedCategoryGrid.length; i++) {
+          const card = limitedCategoryGrid[i];
+          let savedPath = '';
+          if (card.image) {
+            const cleanImage = getRelativeImagePath(card.image);
+            if (cleanImage.startsWith('data:image')) {
+              savedPath = saveBase64Image(cleanImage, 'homes', `category-grid-${i}`);
+            } else {
+              savedPath = cleanImage;
+            }
           }
+          processedCategoryGrid.push({
+            title: card.title || '',
+            description: card.description || '',
+            buttonText: card.buttonText || 'View Collection',
+            targetUrl: card.targetUrl || '',
+            image: savedPath
+          });
         }
-        processedCategoryGrid.push({
-          title: card.title || '',
-          description: card.description || '',
-          buttonText: card.buttonText || 'View Collection',
-          targetUrl: card.targetUrl || '',
-          image: savedPath
-        });
       }
+      config.categoryGrid = processedCategoryGrid;
+
+      // Clean up replaced images from server storage
+      const newCategoryGridImages = processedCategoryGrid.map(c => c.image).filter(Boolean);
+      oldCategoryGridImages.forEach(oldImg => {
+        if (!newCategoryGridImages.includes(oldImg)) {
+          deleteImageFile(oldImg);
+        }
+      });
     }
 
-    // Process Category Sections banner images
-    const processedCategorySections = [];
-    if (Array.isArray(categorySections)) {
-      for (let i = 0; i < categorySections.length; i++) {
-        const section = categorySections[i];
-        let savedBannerPath = '';
-        if (section.bannerImage) {
-          const cleanImage = getRelativeImagePath(section.bannerImage);
-          if (cleanImage.startsWith('data:image')) {
-            savedBannerPath = saveBase64Image(cleanImage, 'homes', `cat-section-banner-${i}`);
-          } else {
-            savedBannerPath = cleanImage;
+    // Process Category Sections banner images only if provided
+    if (categorySections !== undefined) {
+      const oldCategorySectionImages = (config.categorySections || []).map(s => s.bannerImage).filter(Boolean);
+      const processedCategorySections = [];
+      if (Array.isArray(categorySections)) {
+        for (let i = 0; i < categorySections.length; i++) {
+          const section = categorySections[i];
+          let savedBannerPath = '';
+          if (section.bannerImage) {
+            const cleanImage = getRelativeImagePath(section.bannerImage);
+            if (cleanImage.startsWith('data:image')) {
+              savedBannerPath = saveBase64Image(cleanImage, 'homes', `cat-section-banner-${i}`);
+            } else {
+              savedBannerPath = cleanImage;
+            }
           }
+          processedCategorySections.push({
+            categoryId: section.categoryId || '',
+            title: section.title || '',
+            bannerImage: savedBannerPath,
+            bannerLink: section.bannerLink || '',
+            productIds: Array.isArray(section.productIds) ? section.productIds.slice(0, 4) : []
+          });
         }
-        processedCategorySections.push({
-          categoryId: section.categoryId || '',
-          title: section.title || '',
-          bannerImage: savedBannerPath,
-          bannerLink: section.bannerLink || '',
-          productIds: Array.isArray(section.productIds) ? section.productIds.slice(0, 4) : []
-        });
       }
+      config.categorySections = processedCategorySections;
+
+      // Clean up replaced images from server storage
+      const newCategorySectionImages = processedCategorySections.map(s => s.bannerImage).filter(Boolean);
+      oldCategorySectionImages.forEach(oldImg => {
+        if (!newCategorySectionImages.includes(oldImg)) {
+          deleteImageFile(oldImg);
+        }
+      });
     }
 
-    config.heroSlider = processedHero;
-    config.offerBanners = processedOffers;
-    config.categoryGrid = processedCategoryGrid;
-    config.categorySections = processedCategorySections;
-    config.featuredProducts = Array.isArray(featuredProducts) ? featuredProducts.slice(0, 4) : [];
-    config.trendingProducts = Array.isArray(trendingProducts) ? trendingProducts.slice(0, 4) : [];
-    config.exclusiveProducts = Array.isArray(exclusiveProducts) ? exclusiveProducts.slice(0, 4) : [];
+    if (featuredProducts !== undefined) {
+      config.featuredProducts = Array.isArray(featuredProducts) ? featuredProducts.slice(0, 4) : [];
+    }
+    if (trendingProducts !== undefined) {
+      config.trendingProducts = Array.isArray(trendingProducts) ? trendingProducts.slice(0, 4) : [];
+    }
+    if (exclusiveProducts !== undefined) {
+      config.exclusiveProducts = Array.isArray(exclusiveProducts) ? exclusiveProducts.slice(0, 4) : [];
+    }
 
     // Save dynamic settings and policies if provided
-    if (contactSetting) {
+    if (contactSetting !== undefined) {
       config.contactSetting = {
         phones: contactSetting.phones || '',
         email: contactSetting.email || '',
@@ -407,32 +451,32 @@ exports.updateHomeCMS = async (req, res) => {
       };
     }
 
-    if (Array.isArray(privacyPolicy)) {
-      config.privacyPolicy = privacyPolicy.map(sec => ({
+    if (privacyPolicy !== undefined) {
+      config.privacyPolicy = Array.isArray(privacyPolicy) ? privacyPolicy.map(sec => ({
         title: sec.title || '',
         points: Array.isArray(sec.points) ? sec.points : []
-      }));
+      })) : [];
     }
 
-    if (Array.isArray(cancellationReturnPolicy)) {
-      config.cancellationReturnPolicy = cancellationReturnPolicy.map(sec => ({
+    if (cancellationReturnPolicy !== undefined) {
+      config.cancellationReturnPolicy = Array.isArray(cancellationReturnPolicy) ? cancellationReturnPolicy.map(sec => ({
         title: sec.title || '',
         points: Array.isArray(sec.points) ? sec.points : []
-      }));
+      })) : [];
     }
 
-    if (Array.isArray(deliveryPolicy)) {
-      config.deliveryPolicy = deliveryPolicy.map(sec => ({
+    if (deliveryPolicy !== undefined) {
+      config.deliveryPolicy = Array.isArray(deliveryPolicy) ? deliveryPolicy.map(sec => ({
         title: sec.title || '',
         points: Array.isArray(sec.points) ? sec.points : []
-      }));
+      })) : [];
     }
 
-    if (Array.isArray(termsConditions)) {
-      config.termsConditions = termsConditions.map(sec => ({
+    if (termsConditions !== undefined) {
+      config.termsConditions = Array.isArray(termsConditions) ? termsConditions.map(sec => ({
         title: sec.title || '',
         points: Array.isArray(sec.points) ? sec.points : []
-      }));
+      })) : [];
     }
 
     if (freeShippingMinAmount !== undefined) {
@@ -444,53 +488,23 @@ exports.updateHomeCMS = async (req, res) => {
 
     await config.save();
 
-    // Clean up replaced images from server storage
-    const newHeroImages = processedHero.map(s => s.image).filter(Boolean);
-    const newOfferImages = processedOffers.map(b => b.image).filter(Boolean);
-    const newCategoryGridImages = processedCategoryGrid.map(c => c.image).filter(Boolean);
-    const newCategorySectionImages = processedCategorySections.map(s => s.bannerImage).filter(Boolean);
-
-    oldHeroImages.forEach(oldImg => {
-      if (!newHeroImages.includes(oldImg)) {
-        deleteImageFile(oldImg);
-      }
-    });
-
-    oldOfferImages.forEach(oldImg => {
-      if (!newOfferImages.includes(oldImg)) {
-        deleteImageFile(oldImg);
-      }
-    });
-
-    oldCategoryGridImages.forEach(oldImg => {
-      if (!newCategoryGridImages.includes(oldImg)) {
-        deleteImageFile(oldImg);
-      }
-    });
-
-    oldCategorySectionImages.forEach(oldImg => {
-      if (!newCategorySectionImages.includes(oldImg)) {
-        deleteImageFile(oldImg);
-      }
-    });
-
     // Return updated formatting
-    const formattedHero = config.heroSlider.map(slide => ({
+    const formattedHero = (config.heroSlider || []).map(slide => ({
       ...slide.toObject ? slide.toObject() : slide,
       image: getImageUrl(slide.image)
     }));
 
-    const formattedOffers = config.offerBanners.map(banner => ({
+    const formattedOffers = (config.offerBanners || []).map(banner => ({
       ...banner.toObject ? banner.toObject() : banner,
       image: getImageUrl(banner.image)
     }));
 
-    const formattedCategoryGrid = config.categoryGrid.map(card => ({
+    const formattedCategoryGrid = (config.categoryGrid || []).map(card => ({
       ...card.toObject ? card.toObject() : card,
       image: getImageUrl(card.image)
     }));
 
-    const formattedCategorySections = config.categorySections.map(section => ({
+    const formattedCategorySections = (config.categorySections || []).map(section => ({
       ...section.toObject ? section.toObject() : section,
       bannerImage: getImageUrl(section.bannerImage)
     }));
