@@ -1,4 +1,5 @@
 const Enquiry = require('../models/enquiry');
+const { sendEmail } = require('../utils/emailHelper');
 
 // @desc    Create a new enquiry
 // @route   POST /api/enquiries
@@ -281,6 +282,67 @@ exports.getEnquiryStats = async (req, res) => {
       success: false,
       message: 'Server error while fetching statistics',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+// @desc    Reply to an enquiry (Admin)
+// @route   POST /api/admin/enquiries/:id/reply
+// @access  Private (Admin only)
+exports.replyEnquiry = async (req, res) => {
+  try {
+    const { replyMessage } = req.body;
+    if (!replyMessage || replyMessage.trim() === '') {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a reply message'
+      });
+    }
+
+    const enquiry = await Enquiry.findById(req.params.id);
+    if (!enquiry) {
+      return res.status(404).json({
+        success: false,
+        message: 'Enquiry not found'
+      });
+    }
+
+    // Send email to customer
+    await sendEmail({
+      to: enquiry.email,
+      subject: `Re: ${enquiry.subject}`,
+      text: replyMessage,
+      html: `<div style="font-family: sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+        <h2 style="color: #001e3c; margin-top: 0;">P2J Mart Reply</h2>
+        <p>Dear <strong>${enquiry.name}</strong>,</p>
+        <p>We received your query regarding <strong>"${enquiry.subject}"</strong>. Here is our response:</p>
+        <div style="background-color: #f8fafc; border-left: 4px solid #001e3c; padding: 16px; margin: 20px 0; border-radius: 4px; white-space: pre-wrap; color: #1e293b;">
+${replyMessage}
+        </div>
+        <p style="margin-top: 30px; border-t: 1px solid #e2e8f0; padding-top: 15px; font-size: 13px; color: #64748b;">
+          Best Regards,<br/>
+          <strong>P2J Mart Team</strong>
+        </p>
+      </div>`
+    });
+
+    // Update enquiry database model
+    enquiry.replied = true;
+    enquiry.replyMessage = replyMessage;
+    enquiry.read = true; // Auto mark as read
+    await enquiry.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Reply email sent successfully',
+      data: enquiry
+    });
+  } catch (error) {
+    console.error('Error replying to enquiry:', error);
+    res.status(550).json({
+      success: false,
+      message: 'Failed to send reply email',
+      error: error.message
     });
   }
 };

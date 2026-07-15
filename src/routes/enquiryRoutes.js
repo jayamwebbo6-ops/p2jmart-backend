@@ -7,7 +7,8 @@ const {
   updateReadStatus,
   deleteEnquiry,
   deleteMultipleEnquiries,
-  getEnquiryStats
+  getEnquiryStats,
+  replyEnquiry
 } = require('../controllers/enquiryController');
 const { protectAdmin } = require('../middleware/auth');
 
@@ -24,5 +25,7 @@ router.patch('/:id/read', protectAdmin, updateReadStatus);
 router.delete('/:id', protectAdmin, deleteEnquiry);
 
 router.post('/delete-multiple', protectAdmin, deleteMultipleEnquiries);
+
+router.post('/:id/reply', protectAdmin, replyEnquiry);
 
 module.exports = router;
