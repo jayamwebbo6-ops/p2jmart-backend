@@ -35,6 +35,10 @@ const ContactSettingSchema = new mongoose.Schema({
   phones: { type: String, default: '+91 925537662, 936675427' },
   email: { type: String, default: 'p2gmart@gmail.com' },
   address: { type: String, default: 'Plot No 1, 3rd Street, tambaram, Urapakkam, Chennai - 603 210' },
+  registeredAddress: { 
+    type: String, 
+    default: 'Buildings Alyssa, Begonia & Clove Embassy Tech Village,\nOuter Ring Road, Devarabeesanahalli Village,\nBengaluru, 560103, Karnataka, India\nCIN: U51109KA2012PTC066107\nTelephone: +91 925537662' 
+  },
   facebook: { type: String, default: '#' },
   twitter: { type: String, default: '#' },
   instagram: { type: String, default: '#' },
