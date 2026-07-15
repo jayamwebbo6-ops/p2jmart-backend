@@ -40,6 +40,14 @@ const enquirySchema = new mongoose.Schema(
       type: Boolean,
       default: false
     },
+    replied: {
+      type: Boolean,
+      default: false
+    },
+    replyMessage: {
+      type: String,
+      default: null
+    },
     ipAddress: {
       type: String,
       default: null
