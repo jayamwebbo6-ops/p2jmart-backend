@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Category = require('../models/Category');
 const Subcategory = require('../models/Subcategory');
 const { saveBase64Image, getImageUrl, deleteImageFile } = require('../utils/imageHelper');
@@ -20,6 +21,7 @@ exports.getCategories = async (req, res) => {
           id: sub._id.toString(),
           _id: sub._id.toString(),
           name: sub.name,
+          slug: sub.slug || '',
           image: getImageUrl(sub.image),
           rawImage: sub.image, // Keep raw path for editing reference
           products: [] // Seed products array for frontend catalog merge
@@ -333,7 +335,14 @@ exports.getSubcategoryDetails = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const subcategory = await Subcategory.findById(id).populate('category').lean();
+    let query;
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      query = { _id: id };
+    } else {
+      query = { slug: id };
+    }
+
+    const subcategory = await Subcategory.findOne(query).populate('category').lean();
     if (!subcategory) {
       return res.status(404).json({
         success: false,

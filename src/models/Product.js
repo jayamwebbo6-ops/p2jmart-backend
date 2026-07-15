@@ -133,9 +133,23 @@ const ProductSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Subcategory',
     required: true
+  },
+  slug: {
+    type: String,
+    lowercase: true,
+    trim: true,
+    index: true
   }
 }, {
   timestamps: true
+});
+
+const slugify = require('../utils/slugify');
+
+ProductSchema.pre('save', async function () {
+  if (this.isModified('title') || !this.slug) {
+    this.slug = slugify(this.title);
+  }
 });
 
 module.exports = mongoose.model('Product', ProductSchema);
