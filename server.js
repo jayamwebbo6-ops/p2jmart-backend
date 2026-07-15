@@ -151,7 +151,11 @@ apiRouter.use('/payments', paymentRoutes);
 // Mount the API Router under both prefixes (default /api and dynamic base URL from env)
 const sitemapController = require('./src/controllers/sitemapController');
 app.get('/sitemap.xml', sitemapController.getSitemap);
+app.get(`/${BASE_URL}/sitemap.xml`, sitemapController.getSitemap);
 apiRouter.get('/sitemap.xml', sitemapController.getSitemap);
+app.get('/sitemap.xsl', sitemapController.getSitemapStyle);
+app.get(`/${BASE_URL}/sitemap.xsl`, sitemapController.getSitemapStyle);
+apiRouter.get('/sitemap.xsl', sitemapController.getSitemapStyle);
 
 app.use('/api', apiRouter);
 app.use(`/${BASE_URL}/api`, apiRouter);
