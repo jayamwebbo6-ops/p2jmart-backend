@@ -62,7 +62,7 @@ const formatProductResponse = (prod) => {
       ? { id: prodObj.category._id.toString(), name: prodObj.category.name } 
       : prodObj.category,
     subcategory: prodObj.subcategory && prodObj.subcategory._id 
-      ? { id: prodObj.subcategory._id.toString(), name: prodObj.subcategory.name } 
+      ? { id: prodObj.subcategory._id.toString(), name: prodObj.subcategory.name, slug: prodObj.subcategory.slug } 
       : prodObj.subcategory
   };
 };
@@ -75,7 +75,21 @@ exports.getProducts = async (req, res) => {
     const { categoryId, subcategoryId, customizeProduct, includeInactive } = req.query;
     const filter = {};
     if (categoryId) filter.category = categoryId;
-    if (subcategoryId) filter.subcategory = subcategoryId;
+    if (subcategoryId) {
+      if (mongoose.Types.ObjectId.isValid(subcategoryId)) {
+        filter.subcategory = subcategoryId;
+      } else {
+        const subcat = await Subcategory.findOne({ slug: subcategoryId }).lean();
+        if (subcat) {
+          filter.subcategory = subcat._id;
+        } else {
+          return res.status(200).json({
+            success: true,
+            data: []
+          });
+        }
+      }
+    }
     if (customizeProduct) filter.customizeProduct = customizeProduct;
 
     if (includeInactive !== 'true') {
@@ -84,7 +98,7 @@ exports.getProducts = async (req, res) => {
 
     const products = await Product.find(filter)
       .populate('category', 'name')
-      .populate('subcategory', 'name')
+      .populate('subcategory', 'name slug')
       .lean();
 
     const formattedProducts = products.map(prod => formatProductResponse(prod));
@@ -101,11 +115,17 @@ exports.getProducts = async (req, res) => {
   }
 };
 
-// 2. Get single product by ID
+// 2. Get single product by ID or Slug
 exports.getProductById = async (req, res) => {
   try {
     const { id } = req.params;
-    const product = await Product.findById(id)
+    let query;
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      query = { _id: id };
+    } else {
+      query = { slug: id };
+    }
+    const product = await Product.findOne(query)
       .populate('category')
       .populate('subcategory')
       .lean();

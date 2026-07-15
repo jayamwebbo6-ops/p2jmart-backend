@@ -47,6 +47,37 @@ const connectDB = async () => {
     } catch (e) {
       console.warn("Could not drop googleId_1 index:", e.message);
     }
+
+    // Auto-migrate products and subcategories without slugs
+    try {
+      const Product = require('../models/Product');
+      const Subcategory = require('../models/Subcategory');
+      const slugify = require('../utils/slugify');
+
+      // Migrate Subcategories
+      const subcatsWithoutSlug = await Subcategory.find({ $or: [{ slug: { $exists: false } }, { slug: '' }] });
+      if (subcatsWithoutSlug.length > 0) {
+        console.log(`Migrating ${subcatsWithoutSlug.length} subcategories to set slugs...`);
+        for (const subcat of subcatsWithoutSlug) {
+          subcat.slug = slugify(subcat.name);
+          await subcat.save();
+        }
+        console.log('Subcategories slug migration complete.');
+      }
+
+      // Migrate Products
+      const productsWithoutSlug = await Product.find({ $or: [{ slug: { $exists: false } }, { slug: '' }] });
+      if (productsWithoutSlug.length > 0) {
+        console.log(`Migrating ${productsWithoutSlug.length} products to set slugs...`);
+        for (const product of productsWithoutSlug) {
+          product.slug = slugify(product.title);
+          await product.save();
+        }
+        console.log('Products slug migration complete.');
+      }
+    } catch (e) {
+      console.error("Could not run slug migrations:", e);
+    }
   } catch (error) {
     console.error(`Database connection error: ${error.message}`);
     process.exit(1);
