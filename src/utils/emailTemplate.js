@@ -166,6 +166,43 @@ exports.getContactFormTemplate = (data) => {
 };
 
 
+exports.getCancellationTemplate = (order) => {
+  return `
+    <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 16px; color: #333; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+      
+      <div style="text-align: center; margin-bottom: 24px; border-bottom: 1px solid #f1f5f9; padding-bottom: 20px;">
+        <h1 style="color: #ef4444; margin: 0 0 8px 0; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">p2jmart</h1>
+        <h2 style="color: #1e293b; margin: 0 0 4px 0; font-size: 20px;">Order Cancellation Confirmed </h2>
+        <p style="font-size: 15px; color: #64748b; margin: 0;">Your cancellation request has been reviewed and approved.</p>
+      </div>
+
+      <div style="background-color: #f8fafc; border: 1px solid #edf2f7; padding: 16px; border-radius: 12px; margin-bottom: 24px;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 4px 0; font-size: 14px; color: #64748b;"><strong>Order Reference ID:</strong></td>
+            <td style="padding: 4px 0; font-size: 14px; color: #0f172a; text-align: right; font-weight: 600;">#${order.orderId || order._id}</td>
+          </tr>
+          <tr>
+            <td style="padding: 4px 0; font-size: 14px; color: #64748b;"><strong>Total Amount:</strong></td>
+            <td style="padding: 4px 0; font-size: 14px; color: #0f172a; text-align: right; font-weight: 600; color: #ef4444;">₹${order.total}</td>
+          </tr>
+        </table>
+      </div>
+
+      <div style="border: 1px solid #fca5a5; padding: 16px; border-radius: 12px; font-size: 15px; margin-bottom: 24px; background-color: #fef2f2;">
+        <h4 style="margin: 0 0 6px 0; color: #991b1b; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Important Notice Regarding Refund</h4>
+        <p style="color: #b91c1c; margin: 0; line-height: 1.5;">Within 2 to 3 working days your order's payment will be refunded to you.</p>
+      </div>
+
+      <div style="text-align: center; border-top: 1px solid #f1f5f9; padding-top: 16px; margin-top: 8px;">
+        <p style="font-size: 12px; color: #94a3b8; margin: 0 0 4px 0;">Thank you for your patience. If you have any further questions, please reply directly to this mail.</p>
+        <p style="font-size: 12px; color: #94a3b8; margin: 0;">© ${new Date().getFullYear()} p2jmart. All rights reserved.</p>
+      </div>
+
+    </div>
+  `;
+};
+
 
 /**
  * Generates an HTML confirmation template for forgot password OTP verifications

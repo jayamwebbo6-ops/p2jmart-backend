@@ -6,7 +6,7 @@ const StockReservation = require('../models/StockReservation');
 const { saveBase64Image, saveBase64ImageAsync, getImageUrl, getRelativeImagePath } = require('../utils/imageHelper');
 const { sendEmail } = require('../utils/emailHelper');
 const User = require('../models/User');
-const { getOrderConfirmationTemplate } = require('../utils/emailTemplate');
+const { getOrderConfirmationTemplate, getCancellationTemplate } = require('../utils/emailTemplate');
 const logger = require('../utils/logger');
 
 // Helper to atomically deduct stock for a specific variant in a product
@@ -51,7 +51,6 @@ const attemptAtomicDeduction = async (productId, variant, quantity) => {
   return updatedProduct;
 };
 
-
 // Helper to find matching variant based on selectedOptions
 const findMatchingVariant = (product, selectedOptions = {}) => {
   if (!product.variants || product.variants.length === 0) return null;
@@ -83,161 +82,7 @@ const findMatchingVariant = (product, selectedOptions = {}) => {
   return product.variants[0];
 };
 
-const validateAndDeductStock = async (items) => {
-  const reservationItems = []; // stores { productId, variantId, quantity, title }
-  const successfullyDeducted = []; // tracks { productId, variant, quantity } for compensating transaction (rollback)
 
-  try {
-    for (const item of items) {
-      const quantity = Number(item.quantity) || 1;
-
-      if (item.isComboProduct) {
-        // 1. Combo Product
-        let combo = null;
-        if (item.productId && /^[0-9a-fA-F]{24}$/.test(item.productId)) {
-          combo = await ComboPack.findById(item.productId);
-        }
-        if (combo && combo.selectedVariants && combo.selectedVariants.length > 0) {
-          for (const sv of combo.selectedVariants) {
-            const prod = await Product.findById(sv.productId);
-            if (!prod) {
-              throw new Error(`Product not found for combo component: ${sv.productId}`);
-            }
-            if (prod.isActive === false) {
-              throw new Error(`Combo component '${prod.title}' is currently inactive.`);
-            }
-
-            const variant = prod.variants.find(v => v.id === sv.variantId || v._id?.toString() === sv.variantId);
-            if (!variant) {
-              throw new Error(`Variant not found for combo component in product: ${prod.title}`);
-            }
-
-            const neededQty = quantity;
-            const updated = await attemptAtomicDeduction(prod._id, variant, neededQty);
-            if (!updated) {
-              logger.stock.error(`Combo component out of stock during concurrent check`, { product: prod.title, variantId: sv.variantId, needed: neededQty });
-              throw new Error(`Item '${prod.title}' inside Combo Pack is out of stock.`);
-            }
-
-            successfullyDeducted.push({
-              productId: prod._id,
-              variant,
-              quantity: neededQty
-            });
-
-            logger.stock.info(`Stock deducted atomically for combo component`, { product: prod.title, variantId: sv.variantId, deducted: neededQty });
-            reservationItems.push({
-              productId: prod._id,
-              variantId: variant.id || variant._id?.toString(),
-              quantity: neededQty,
-              title: `${prod.title} (Combo Component)`
-            });
-          }
-        } else {
-          // Fallback for custom / dynamic combo packs
-          const included = item.includedProducts || [];
-          for (const subItem of included) {
-            const subId = subItem.productId || subItem.id || subItem._id;
-            const prod = await Product.findById(subId);
-            if (!prod) continue;
-            if (prod.isActive === false) {
-              throw new Error(`Custom combo component '${prod.title}' is currently inactive.`);
-            }
-
-            const variant = prod.variants && prod.variants.length > 0 ? prod.variants[0] : null;
-            if (!variant) continue;
-
-            const neededQty = quantity;
-            const updated = await attemptAtomicDeduction(prod._id, variant, neededQty);
-            if (!updated) {
-              logger.stock.error(`Custom combo component out of stock during concurrent check`, { product: prod.title, needed: neededQty });
-              throw new Error(`Item '${prod.title}' inside custom pack is out of stock.`);
-            }
-
-            successfullyDeducted.push({
-              productId: prod._id,
-              variant,
-              quantity: neededQty
-            });
-
-            logger.stock.info(`Stock deducted atomically for custom combo component`, { product: prod.title, deducted: neededQty });
-            reservationItems.push({
-              productId: prod._id,
-              variantId: variant.id || variant._id?.toString(),
-              quantity: neededQty,
-              title: `${prod.title} (Custom Component)`
-            });
-          }
-        }
-      } else {
-        // 2. Standard Product
-        const prod = await Product.findById(item.productId);
-        if (!prod) {
-          logger.stock.error(`Product not found during stock validation`, { productId: item.productId });
-          throw new Error(`Product not found for ID: ${item.productId}`);
-        }
-        if (prod.isActive === false) {
-          logger.stock.error(`Product is inactive during stock validation`, { productId: item.productId, title: prod.title });
-          throw new Error(`Product '${prod.title}' is currently inactive and cannot be purchased.`);
-        }
-
-        const variant = findMatchingVariant(prod, item.selectedOptions);
-        if (!variant) {
-          logger.stock.error(`No matching variant found`, { product: prod.title, selectedOptions: item.selectedOptions });
-          throw new Error(`No available variant found for product: ${prod.title}`);
-        }
-
-        const updated = await attemptAtomicDeduction(prod._id, variant, quantity);
-        if (!updated) {
-          logger.stock.error(`Insufficient stock for product during concurrent check`, { product: prod.title, needed: quantity });
-          throw new Error(`Product '${prod.title}' is out of stock or has insufficient quantity.`);
-        }
-
-        successfullyDeducted.push({
-          productId: prod._id,
-          variant,
-          quantity
-        });
-
-        logger.stock.info(`Stock deducted atomically for standard product`, { product: prod.title, variantId: variant.id, deducted: quantity });
-        reservationItems.push({
-          productId: prod._id,
-          variantId: variant.id || variant._id?.toString(),
-          quantity,
-          title: prod.title
-        });
-      }
-    }
-
-    return reservationItems;
-  } catch (error) {
-    // Compensating Transaction: Roll back all successfully deducted stock so far
-    logger.stock.warn(`Error during stock allocation – triggering rollback for ${successfullyDeducted.length} items. Reason: ${error.message}`);
-    for (const roll of successfullyDeducted) {
-      try {
-        const update = {
-          $inc: { "variants.$[elem].stock": roll.quantity }
-        };
-        const arrayFilters = [];
-        if (roll.variant._id) {
-          arrayFilters.push({ "elem._id": roll.variant._id });
-        } else {
-          arrayFilters.push({ "elem.id": roll.variant.id });
-        }
-
-        await Product.updateOne(
-          { _id: roll.productId },
-          update,
-          { arrayFilters }
-        );
-        logger.stock.info(`Rollback complete for product: ${roll.productId}, variant: ${roll.variant.id || roll.variant._id}`);
-      } catch (rollbackErr) {
-        logger.stock.error(`Critical: Failed to roll back stock for product ${roll.productId}, variant ${roll.variant.id || roll.variant._id}`, { error: rollbackErr.message });
-      }
-    }
-    throw error;
-  }
-};
 
 // Helper to map status to colors
 const getStatusColor = (status) => {
@@ -453,7 +298,7 @@ exports.createOrder = async (req, res, next) => {
       const user = await User.findById(req.user._id);
 
       if (user && user.email) {
-        const subject = `p2jmart Order Invoice - ${orderId}`;
+        const subject = `p2jmart Order Confirmation - ${orderId}`;
 
         // 2. Generate template string passing user context and order payload data
         const htmlBody = getOrderConfirmationTemplate(user, newOrder);
@@ -516,9 +361,18 @@ exports.getOrderById = async (req, res, next) => {
   }
 };
 
-// Cancel order
+// Cancel order (User requests cancellation)
 exports.cancelOrder = async (req, res, next) => {
   try {
+    const { reason } = req.body;
+
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Reason for cancellation is required'
+      });
+    }
+
     const order = await Order.findOne({ _id: req.params.id, user: req.user._id });
     if (!order) {
       return res.status(404).json({
@@ -534,6 +388,13 @@ exports.cancelOrder = async (req, res, next) => {
       });
     }
 
+    if (order.status === 'Cancellation Requested') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cancellation request is already pending admin review'
+      });
+    }
+
     if (order.status === 'Delivered' || order.status === 'Shipped') {
       return res.status(400).json({
         success: false,
@@ -541,14 +402,15 @@ exports.cancelOrder = async (req, res, next) => {
       });
     }
 
-    order.status = 'Cancelled';
-    order.statusColor = getStatusColor('Cancelled');
+    order.status = 'Cancellation Requested';
+    order.cancellationReason = reason.trim();
+    order.statusColor = getStatusColor('Cancellation Requested') || 'text-orange-600 bg-orange-50';
     order.statusDate = new Date();
     await order.save();
 
     return res.status(200).json({
       success: true,
-      message: 'Order cancelled successfully',
+      message: 'Cancellation request submitted successfully',
       data: formatOrderResponse(order)
     });
   } catch (err) {
@@ -620,29 +482,22 @@ exports.getAdminReturnRequests = async (req, res, next) => {
   }
 };
 
-// Update order status (Admin only)
+// Update order status (Admin only - handles approval and emails)
 exports.updateOrderStatus = async (req, res, next) => {
   try {
     const { status } = req.body;
-    if (!['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'].includes(status)) {
+    if (!['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancellation Requested', 'Cancelled'].includes(status)) {
       return res.status(400).json({
         success: false,
         message: 'Invalid order status'
       });
     }
 
-    const order = await Order.findById(req.params.id);
+    const order = await Order.findById(req.params.id).populate('user');
     if (!order) {
       return res.status(404).json({
         success: false,
         message: 'Order not found'
-      });
-    }
-
-    if (status === 'Cancelled') {
-      return res.status(400).json({
-        success: false,
-        message: 'Admin is not authorized to cancel orders'
       });
     }
 
@@ -661,10 +516,11 @@ exports.updateOrderStatus = async (req, res, next) => {
     }
 
     const allowedTransitions = {
-      'Pending': ['Pending', 'Processing'],
-      'Processing': ['Processing', 'Shipped'],
+      'Pending': ['Pending', 'Processing', 'Cancelled'],
+      'Processing': ['Processing', 'Shipped', 'Cancelled'],
       'Shipped': ['Shipped', 'Delivered'],
       'Delivered': ['Delivered'],
+      'Cancellation Requested': ['Cancellation Requested', 'Cancelled'],
       'Cancelled': ['Cancelled']
     };
 
@@ -688,12 +544,28 @@ exports.updateOrderStatus = async (req, res, next) => {
     }
 
     order.status = status;
-    order.statusColor = getStatusColor(status);
+    order.statusColor = getStatusColor(status) || (status === 'Cancelled' ? 'text-red-600 bg-red-50' : 'text-gray-600 bg-gray-50');
     order.statusDate = new Date();
+    
     if (status === 'Delivered') {
       order.deliveredAt = new Date();
     }
+    
     await order.save();
+
+    // If admin approves the cancellation, trigger email helper
+    if (status === 'Cancelled' && order.user && order.user.email) {
+      try {
+        const htmlContent = getCancellationTemplate(order);
+        await sendEmail({
+          to: order.user.email,
+          subject: `Order Cancelled Confirmation - P2J Mart`,
+          html: htmlContent
+        });
+      } catch (emailErr) {
+        logger.error(`Failed to send cancellation email for order ${order._id}: ${emailErr.message}`);
+      }
+    }
 
     return res.status(200).json({
       success: true,
@@ -772,6 +644,65 @@ exports.requestItemReturn = async (req, res, next) => {
       success: true,
       message: 'Return request submitted successfully',
       data: formatOrderResponse(order)
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+
+// Admin: Get all cancellation requests
+// Replace your getAdminCancellationRequests in orderController.js with this:
+exports.getAdminCancellationRequests = async (req, res, next) => {
+  try {
+    const orders = await Order.find({
+      status: { $in: ['Cancellation Requested', 'Cancelled', 'Cancellation Rejected'] }
+    })
+    .populate('user', 'name email phone')
+    .sort({ updatedAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      data: orders // Send raw orders so the frontend can map them safely
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+
+exports.reviewCancellationRequest = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body; // Evaluates to 'Cancelled' or 'Cancellation Rejected'
+
+    const order = await Order.findById(id);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order details not found.' });
+    }
+
+    // Verify the order is actively waiting for an action
+    if (order.status !== 'Cancellation Requested') {
+      return res.status(400).json({ success: false, message: 'No active cancellation request on this order.' });
+    }
+
+    if (status === 'Cancelled') {
+      order.status = 'Cancelled';
+      
+      // OPTIONAL: If you track stock levels, restore item stock allocations here
+      // order.items.forEach(item => { ... });
+    } else {
+      // Rejection branch: Revert the status back to an acceptable operational state
+      // Adjust 'Processing' if your default active status tracking is named differently (e.g., 'Placed')
+      order.status = 'Processing'; 
+    }
+
+    await order.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `Cancellation successfully updated to status: ${order.status}`,
+      data: order
     });
   } catch (err) {
     next(err);
@@ -873,53 +804,64 @@ exports.adminRefundItem = async (req, res, next) => {
 
     // Restore stock
     try {
+      const quantityToRestore = Number(item.quantity) || 1;
+
       if (item.isComboProduct) {
         let combo = null;
         if (item.productId && /^[0-9a-fA-F]{24}$/.test(item.productId)) {
           combo = await ComboPack.findById(item.productId);
         }
         if (combo && combo.selectedVariants && combo.selectedVariants.length > 0) {
+          // Restore stock for mapped static combo components
           for (const sv of combo.selectedVariants) {
-            const prod = await Product.findById(sv.productId);
-            if (prod) {
-              const variant = prod.variants.find(v => v.id === sv.variantId || v._id?.toString() === sv.variantId);
-              if (variant) {
-                variant.stock += item.quantity;
-                prod.markModified('variants');
-                await prod.save();
-              }
-            }
+            await Product.updateOne(
+              { _id: sv.productId },
+              { $inc: { "variants.$[elem].stock": quantityToRestore } },
+              { arrayFilters: [{ $or: [{ "elem.id": sv.variantId }, { "elem._id": sv.variantId }] }] }
+            );
+            logger.stock.info(`Refund stock restoration complete for combo component`, { productId: sv.productId, variantId: sv.variantId, quantity: quantityToRestore });
           }
         } else {
-          for (const subItem of (item.includedProducts || [])) {
+          // Fallback logic for dynamic/custom combo packs
+          const included = item.includedProducts || [];
+          for (const subItem of included) {
             const subId = subItem.productId || subItem.id || subItem._id;
             const prod = await Product.findById(subId);
-            if (prod && prod.variants && prod.variants.length > 0) {
-              prod.variants[0].stock += item.quantity;
-              prod.markModified('variants');
-              await prod.save();
-            }
+            if (!prod || !prod.variants || prod.variants.length === 0) continue;
+            
+            const variantId = prod.variants[0]._id || prod.variants[0].id;
+            await Product.updateOne(
+              { _id: prod._id },
+              { $inc: { "variants.$[elem].stock": quantityToRestore } },
+              { arrayFilters: [{ $or: [{ "elem.id": variantId }, { "elem._id": variantId }] }] }
+            );
+            logger.stock.info(`Refund stock restoration complete for custom combo component`, { productId: prod._id, quantity: quantityToRestore });
           }
         }
       } else {
+        // Standard Product Stock Restoration
         const prod = await Product.findById(item.productId);
         if (prod) {
           const variant = findMatchingVariant(prod, item.selectedOptions);
           if (variant) {
-            variant.stock += item.quantity;
-            prod.markModified('variants');
-            await prod.save();
+            const variantId = variant._id || variant.id;
+            await Product.updateOne(
+              { _id: prod._id },
+              { $inc: { "variants.$[elem].stock": quantityToRestore } },
+              { arrayFilters: [{ $or: [{ "elem.id": variantId }, { "elem._id": variantId }] }] }
+            );
+            logger.stock.info(`Refund stock restoration complete for standard product`, { productId: prod._id, variantId, quantity: quantityToRestore });
           }
         }
       }
-    } catch (stockErr) {
-      console.error('Failed to restock returned product:', stockErr);
+    } catch (stockRestoreErr) {
+      logger.stock.error(`Non-blocking fallback warning: Failed to restock items automatically during refund settlement`, { error: stockRestoreErr.message });
     }
 
     await order.save();
     return res.status(200).json({
       success: true,
-      message: 'Refund issued and stock updated successfully',
+      message: 'Refund settled and stock updated successfully',
       data: formatOrderResponse(order)
     });
   } catch (err) {
@@ -927,4 +869,159 @@ exports.adminRefundItem = async (req, res, next) => {
   }
 };
 
-exports.validateAndDeductStock = validateAndDeductStock;
+
+exports.validateAndDeductStock = async (items) => {
+  const reservationItems = []; // stores { productId, variantId, quantity, title }
+  const successfullyDeducted = []; // tracks { productId, variant, quantity } for compensating transaction (rollback)
+
+  try {
+    for (const item of items) {
+      const quantity = Number(item.quantity) || 1;
+
+      if (item.isComboProduct) {
+        // 1. Combo Product
+        let combo = null;
+        if (item.productId && /^[0-9a-fA-F]{24}$/.test(item.productId)) {
+          combo = await ComboPack.findById(item.productId);
+        }
+        if (combo && combo.selectedVariants && combo.selectedVariants.length > 0) {
+          for (const sv of combo.selectedVariants) {
+            const prod = await Product.findById(sv.productId);
+            if (!prod) {
+              throw new Error(`Product not found for combo component: ${sv.productId}`);
+            }
+            if (prod.isActive === false) {
+              throw new Error(`Combo component '${prod.title}' is currently inactive.`);
+            }
+
+            const variant = prod.variants.find(v => v.id === sv.variantId || v._id?.toString() === sv.variantId);
+            if (!variant) {
+              throw new Error(`Variant not found for combo component in product: ${prod.title}`);
+            }
+
+            const neededQty = quantity;
+            const updated = await attemptAtomicDeduction(prod._id, variant, neededQty);
+            if (!updated) {
+              logger.stock.error(`Combo component out of stock during concurrent check`, { product: prod.title, variantId: sv.variantId, needed: neededQty });
+              throw new Error(`Item '${prod.title}' inside Combo Pack is out of stock.`);
+            }
+
+            successfullyDeducted.push({
+              productId: prod._id,
+              variant,
+              quantity: neededQty
+            });
+
+            logger.stock.info(`Stock deducted atomically for combo component`, { product: prod.title, variantId: sv.variantId, deducted: neededQty });
+            reservationItems.push({
+              productId: prod._id,
+              variantId: variant.id || variant._id?.toString(),
+              quantity: neededQty,
+              title: `${prod.title} (Combo Component)`
+            });
+          }
+        } else {
+          // Fallback for custom / dynamic combo packs
+          const included = item.includedProducts || [];
+          for (const subItem of included) {
+            const subId = subItem.productId || subItem.id || subItem._id;
+            const prod = await Product.findById(subId);
+            if (!prod) continue;
+            if (prod.isActive === false) {
+              throw new Error(`Custom combo component '${prod.title}' is currently inactive.`);
+            }
+
+            const variant = prod.variants && prod.variants.length > 0 ? prod.variants[0] : null;
+            if (!variant) continue;
+
+            const neededQty = quantity;
+            const updated = await attemptAtomicDeduction(prod._id, variant, neededQty);
+            if (!updated) {
+              logger.stock.error(`Custom combo component out of stock during concurrent check`, { product: prod.title, needed: neededQty });
+              throw new Error(`Item '${prod.title}' inside custom pack is out of stock.`);
+            }
+
+            successfullyDeducted.push({
+              productId: prod._id,
+              variant,
+              quantity: neededQty
+            });
+
+            logger.stock.info(`Stock deducted atomically for custom combo component`, { product: prod.title, deducted: neededQty });
+            reservationItems.push({
+              productId: prod._id,
+              variantId: variant.id || variant._id?.toString(),
+              quantity: neededQty,
+              title: `${prod.title} (Custom Component)`
+            });
+          }
+        }
+      } else {
+        // 2. Standard Product
+        const prod = await Product.findById(item.productId);
+        if (!prod) {
+          logger.stock.error(`Product not found during stock validation`, { productId: item.productId });
+          throw new Error(`Product not found for ID: ${item.productId}`);
+        }
+        if (prod.isActive === false) {
+          logger.stock.error(`Product is inactive during stock validation`, { productId: item.productId, title: prod.title });
+          throw new Error(`Product '${prod.title}' is currently inactive and cannot be purchased.`);
+        }
+
+        const variant = findMatchingVariant(prod, item.selectedOptions);
+        if (!variant) {
+          logger.stock.error(`No matching variant found`, { product: prod.title, selectedOptions: item.selectedOptions });
+          throw new Error(`No available variant found for product: ${prod.title}`);
+        }
+
+        const updated = await attemptAtomicDeduction(prod._id, variant, quantity);
+        if (!updated) {
+          logger.stock.error(`Insufficient stock for product during concurrent check`, { product: prod.title, needed: quantity });
+          throw new Error(`Product '${prod.title}' is out of stock or has insufficient quantity.`);
+        }
+
+        successfullyDeducted.push({
+          productId: prod._id,
+          variant,
+          quantity
+        });
+
+        logger.stock.info(`Stock deducted atomically for standard product`, { product: prod.title, variantId: variant.id, deducted: quantity });
+        reservationItems.push({
+          productId: prod._id,
+          variantId: variant.id || variant._id?.toString(),
+          quantity,
+          title: prod.title
+        });
+      }
+    }
+
+    return reservationItems;
+  } catch (error) {
+    // Compensating Transaction: Roll back all successfully deducted stock so far
+    logger.stock.warn(`Error during stock allocation – triggering rollback for ${successfullyDeducted.length} items. Reason: ${error.message}`);
+    for (const roll of successfullyDeducted) {
+      try {
+        const update = {
+          $inc: { "variants.$[elem].stock": roll.quantity }
+        };
+        const arrayFilters = [];
+        if (roll.variant._id) {
+          arrayFilters.push({ "elem._id": roll.variant._id });
+        } else {
+          arrayFilters.push({ "elem.id": roll.variant.id });
+        }
+
+        await Product.updateOne(
+          { _id: roll.productId },
+          update,
+          { arrayFilters }
+        );
+        logger.stock.info(`Rollback complete for product: ${roll.productId}, variant: ${roll.variant.id || roll.variant._id}`);
+      } catch (rollbackErr) {
+        logger.stock.error(`Critical: Failed to roll back stock for product ${roll.productId}, variant ${roll.variant.id || roll.variant._id}`, { error: rollbackErr.message });
+      }
+    }
+    throw error;
+  }
+};

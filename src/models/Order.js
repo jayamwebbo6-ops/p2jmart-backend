@@ -127,8 +127,12 @@ const OrderSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'],
+     enum: ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancellation Requested', 'Cancelled', 'Cancellation Rejected'],
       default: 'Processing'
+    },
+    cancellationReason: {
+      type: String,
+      default: ''
     },
     statusColor: {
       type: String,

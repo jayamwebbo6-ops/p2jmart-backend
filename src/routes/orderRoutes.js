@@ -19,4 +19,9 @@ router.put('/:id/items/:itemId/admin/review-return', protectAdmin, orderControll
 router.put('/:id/items/:itemId/admin/receive-parcel', protectAdmin, orderController.adminReceiveParcel);
 router.put('/:id/items/:itemId/admin/refund-item', protectAdmin, orderController.adminRefundItem);
 
+// FIX: Point cancellation reviews to the status updater controller & add protection middleware
+router.put('/admin/orders/review-cancellation/:id', protectAdmin, orderController.updateOrderStatus);
+router.get('/admin/cancellations', protectAdmin, orderController.getAdminCancellationRequests);
+
+
 module.exports = router;
