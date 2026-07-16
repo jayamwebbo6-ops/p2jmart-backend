@@ -37,6 +37,8 @@ const getStatusColor = (status) => {
       return 'text-purple-600 bg-purple-50';
     case 'Awaiting Gateway Confirmation':
       return 'text-indigo-600 bg-indigo-50';
+    case 'Cancellation Rejected':
+      return 'text-rose-600 bg-rose-50';
     default:
       return 'text-gray-600 bg-gray-50';
   }

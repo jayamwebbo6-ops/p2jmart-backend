@@ -108,6 +108,8 @@ const getStatusColor = (status) => {
       return 'text-purple-600 bg-purple-50';
     case 'Awaiting Gateway Confirmation':
       return 'text-indigo-600 bg-indigo-50';
+    case 'Cancellation Rejected':
+      return 'text-rose-600 bg-rose-50';
     default:
       return 'text-gray-600 bg-gray-50';
   }
@@ -669,11 +671,67 @@ exports.getAdminReturnRequests = async (req, res, next) => {
   }
 };
 
+const restoreOrderStock = async (order) => {
+  for (const item of order.items) {
+    try {
+      const quantityToRestore = Number(item.quantity) || 1;
+
+      if (item.isComboProduct) {
+        let combo = null;
+        if (item.productId && /^[0-9a-fA-F]{24}$/.test(item.productId)) {
+          combo = await ComboPack.findById(item.productId);
+        }
+        if (combo && combo.selectedVariants && combo.selectedVariants.length > 0) {
+          for (const sv of combo.selectedVariants) {
+            await Product.updateOne(
+              { _id: sv.productId },
+              { $inc: { "variants.$[elem].stock": quantityToRestore } },
+              { arrayFilters: [{ $or: [{ "elem.id": sv.variantId }, { "elem._id": sv.variantId }] }] }
+            );
+            logger.stock.info(`Restored stock for combo component`, { productId: sv.productId, variantId: sv.variantId, quantity: quantityToRestore });
+          }
+        } else {
+          const included = item.includedProducts || [];
+          for (const subItem of included) {
+            const subId = subItem.productId || subItem.id || subItem._id;
+            const prod = await Product.findById(subId);
+            if (!prod || !prod.variants || prod.variants.length === 0) continue;
+            
+            const variantId = prod.variants[0]._id || prod.variants[0].id;
+            await Product.updateOne(
+              { _id: prod._id },
+              { $inc: { "variants.$[elem].stock": quantityToRestore } },
+              { arrayFilters: [{ $or: [{ "elem.id": variantId }, { "elem._id": variantId }] }] }
+            );
+            logger.stock.info(`Restored stock for custom combo component`, { productId: prod._id, quantity: quantityToRestore });
+          }
+        }
+      } else {
+        const prod = await Product.findById(item.productId);
+        if (prod) {
+          const variant = findMatchingVariant(prod, item.selectedOptions);
+          if (variant) {
+            const variantId = variant._id || variant.id;
+            await Product.updateOne(
+              { _id: prod._id },
+              { $inc: { "variants.$[elem].stock": quantityToRestore } },
+              { arrayFilters: [{ $or: [{ "elem.id": variantId }, { "elem._id": variantId }] }] }
+            );
+            logger.stock.info(`Restored stock for standard product`, { productId: prod._id, variantId, quantity: quantityToRestore });
+          }
+        }
+      }
+    } catch (stockRestoreErr) {
+      logger.stock.error(`Failed to restock item during order cancellation`, { orderId: order._id, itemId: item._id, error: stockRestoreErr.message });
+    }
+  }
+};
+
 // Update order status (Admin only - handles approval and emails)
 exports.updateOrderStatus = async (req, res, next) => {
   try {
     const { status } = req.body;
-    if (!['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancellation Requested', 'Cancelled'].includes(status)) {
+    if (!['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancellation Requested', 'Cancelled', 'Cancellation Rejected'].includes(status)) {
       return res.status(400).json({
         success: false,
         message: 'Invalid order status'
@@ -708,7 +766,8 @@ exports.updateOrderStatus = async (req, res, next) => {
       'Processing': ['Processing', 'Shipped', 'Cancelled'],
       'Shipped': ['Shipped', 'Delivered'],
       'Delivered': ['Delivered'],
-      'Cancellation Requested': ['Cancellation Requested', 'Cancelled', 'Processing'],
+      'Cancellation Requested': ['Cancellation Requested', 'Cancelled', 'Cancellation Rejected', 'Processing'],
+      'Cancellation Rejected': ['Cancellation Rejected', 'Processing', 'Shipped', 'Cancelled'],
       'Cancelled': ['Cancelled']
     };
 
@@ -737,6 +796,11 @@ exports.updateOrderStatus = async (req, res, next) => {
     
     if (status === 'Delivered') {
       order.deliveredAt = new Date();
+    }
+    
+    // If admin approves the cancellation, restore stock
+    if (status === 'Cancelled') {
+      await restoreOrderStock(order);
     }
     
     await order.save();
@@ -864,7 +928,7 @@ exports.reviewCancellationRequest = async (req, res, next) => {
     const { id } = req.params;
     const { status } = req.body; // Evaluates to 'Cancelled' or 'Cancellation Rejected'
 
-    const order = await Order.findById(id);
+    const order = await Order.findById(id).populate('user');
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order details not found.' });
     }
@@ -876,13 +940,27 @@ exports.reviewCancellationRequest = async (req, res, next) => {
 
     if (status === 'Cancelled') {
       order.status = 'Cancelled';
-      
-      // OPTIONAL: If you track stock levels, restore item stock allocations here
-      // order.items.forEach(item => { ... });
+      order.statusColor = getStatusColor('Cancelled');
+      order.statusDate = new Date();
+      await restoreOrderStock(order);
+
+      // Send Email
+      if (order.user && order.user.email) {
+        try {
+          const htmlContent = getCancellationTemplate(order);
+          await sendEmail({
+            to: order.user.email,
+            subject: `Order Cancelled Confirmation - P2J Mart`,
+            html: htmlContent
+          });
+        } catch (emailErr) {
+          logger.error(`Failed to send cancellation email for order ${order._id}: ${emailErr.message}`);
+        }
+      }
     } else {
-      // Rejection branch: Revert the status back to an acceptable operational state
-      // Adjust 'Processing' if your default active status tracking is named differently (e.g., 'Placed')
-      order.status = 'Processing'; 
+      order.status = 'Cancellation Rejected';
+      order.statusColor = getStatusColor('Cancellation Rejected');
+      order.statusDate = new Date();
     }
 
     await order.save();
@@ -890,7 +968,7 @@ exports.reviewCancellationRequest = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       message: `Cancellation successfully updated to status: ${order.status}`,
-      data: order
+      data: formatOrderResponse(order)
     });
   } catch (err) {
     next(err);
