@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const logger = require('../utils/logger');
 
 const OrderSchema = new mongoose.Schema(
   {
@@ -98,7 +99,6 @@ const OrderSchema = new mongoose.Schema(
     },
     paymentStatus: {
       type: String,
-      enum: ['pending', 'paid', 'failed'],
       default: 'pending'
     },
     subtotal: {
@@ -127,8 +127,12 @@ const OrderSchema = new mongoose.Schema(
     },
     status: {
       type: String,
+<<<<<<< HEAD
      enum: ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancellation Requested', 'Cancelled', 'Cancellation Rejected'],
       default: 'Processing'
+=======
+      default: 'Pending'
+>>>>>>> e12560289fca2acce2f6e0542904ab1245ea1b78
     },
     cancellationReason: {
       type: String,
@@ -142,6 +146,28 @@ const OrderSchema = new mongoose.Schema(
       type: Date,
       default: Date.now
     },
+    reservationExpiresAt: {
+      type: Date
+    },
+    gatewayPendingSince: {
+      type: Date
+    },
+    gatewayPendingExpiry: {
+      type: Date
+    },
+    mockStatus: {
+      type: String,
+      enum: ['Success', 'Failure', 'Aborted', 'Pending', null]
+    },
+    auditLog: [
+      {
+        action: { type: String, required: true },
+        status: { type: String },
+        paymentStatus: { type: String },
+        details: { type: mongoose.Schema.Types.Mixed },
+        timestamp: { type: Date, default: Date.now }
+      }
+    ],
     trackingId: {
       type: String,
       default: ''
@@ -165,6 +191,7 @@ const OrderSchema = new mongoose.Schema(
       type: String,
       default: ""
     },
+    
 
     paymentResponse: {
       type: Object,
@@ -180,4 +207,24 @@ const OrderSchema = new mongoose.Schema(
   }
 );
 
+<<<<<<< HEAD
 module.exports = mongoose.model('Order', OrderSchema);
+=======
+OrderSchema.methods.addAuditLog = async function (action, details = {}) {
+  this.auditLog.push({
+    action,
+    status: this.status,
+    paymentStatus: this.paymentStatus,
+    details,
+    timestamp: new Date()
+  });
+  logger.order.info(`Order ${this.orderId} Audit: ${action}`, {
+    status: this.status,
+    paymentStatus: this.paymentStatus,
+    details
+  });
+  return this.save();
+};
+
+module.exports = mongoose.model('Order', OrderSchema);
+>>>>>>> e12560289fca2acce2f6e0542904ab1245ea1b78

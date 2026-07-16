@@ -14,6 +14,9 @@ router.put('/:id/items/:itemId/return-request', protectUser, orderController.req
 // Admin Order Routes
 router.get('/admin/get-all-orders', protectAdmin, orderController.getAdminOrders);
 router.get('/admin/return-requests', protectAdmin, orderController.getAdminReturnRequests);
+router.get('/admin/refund-required', protectAdmin, orderController.getOrdersRequiringRefund);
+router.put('/admin/refund/:id/initiate', protectAdmin, orderController.adminInitiateOrderRefund);
+router.put('/admin/refund/:id/complete', protectAdmin, orderController.adminCompleteOrderRefund);
 router.put('/admin/update-status/:id', protectAdmin, orderController.updateOrderStatus);
 router.put('/:id/items/:itemId/admin/review-return', protectAdmin, orderController.adminReviewReturn);
 router.put('/:id/items/:itemId/admin/receive-parcel', protectAdmin, orderController.adminReceiveParcel);

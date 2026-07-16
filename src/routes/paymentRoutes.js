@@ -9,6 +9,7 @@ router.get('/status/:orderId', protectUser, paymentController.getPaymentStatus);
 
 // Development Mock Simulation Routes
 router.get('/simulate-response', paymentController.simulateResponse);
+router.post('/set-mock-status', paymentController.setMockStatus);
 
 // CCAvenue Redirect Target Route (Public Callback - POST)
 router.post('/response', paymentController.paymentResponse);

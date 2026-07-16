@@ -10,16 +10,18 @@ const logger = require('../utils/logger');
 const { saveBase64Image, getRelativeImagePath, getImageUrl } = require('../utils/imageHelper');
 const { getOrderConfirmationTemplate } = require('../utils/emailTemplate');
 const { sendEmail } = require('../utils/emailHelper');
-const { validateAndDeductStock } = require('./orderController');
+const { validateAndDeductStock, recalculateOrderTotals } = require('./orderController');
 const queryString = require('querystring');
 
 const getStatusColor = (status) => {
   switch (status) {
     case 'Pending': return 'text-yellow-600 bg-yellow-50';
+    case 'Confirmed': return 'text-green-600 bg-green-50';
     case 'Processing': return 'text-blue-600 bg-blue-50';
     case 'Shipped': return 'text-purple-600 bg-purple-50';
     case 'Delivered': return 'text-green-600 bg-green-50';
     case 'Cancelled': return 'text-red-600 bg-red-50';
+    case 'Refund Pending': return 'text-orange-600 bg-orange-50';
     default: return 'text-gray-600 bg-gray-50';
   }
 };
@@ -68,19 +70,13 @@ exports.createPayment = async (req, res, next) => {
     const {
       items,
       shippingAddress,
-      subtotal,
-      gst = 0,
-      shippingFee,
-      total,
       isDirectPurchase = false,
-      couponCode = null,
-      couponDiscount = 0
+      couponCode = null
     } = req.body;
 
     logger.checkout.info('CCAvenue Payment initiation started', {
       userId: req.user._id,
-      itemCount: items?.length,
-      total
+      itemCount: items?.length
     });
 
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -91,12 +87,26 @@ exports.createPayment = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Invalid shipping address details' });
     }
 
+    // Server-side recalculation and validation
+    let totals;
+    try {
+      totals = await recalculateOrderTotals({
+        items,
+        shippingAddress,
+        couponCode,
+        userId: req.user._id
+      });
+    } catch (calcError) {
+      logger.checkout.error('CCAvenue order rejected – calculation validation failed', { userId: req.user._id, reason: calcError.message });
+      return res.status(400).json({ success: false, message: calcError.message });
+    }
+
     // Generate unique order ID
     const randomNum = Math.floor(100000 + Math.random() * 900000);
     const orderId = `ORD-${Date.now().toString().slice(-4)}-${randomNum}`;
 
     // Normalize items
-    const normalizedItems = await Promise.all(items.map(async (item) => {
+    const normalizedItems = await Promise.all(totals.recalculatedItems.map(async (item) => {
       const selectedOptions = { ...item.selectedOptions };
       if (selectedOptions.customImage) {
         selectedOptions.customImage = saveBase64Image(selectedOptions.customImage, 'customization', 'custom-img');
@@ -108,35 +118,17 @@ exports.createPayment = async (req, res, next) => {
         }
       }
 
-      let returnPolicy = 'No Return Policy';
-      try {
-        const prodId = item.productId || item.id || item._id;
-        if (item.isComboProduct) {
-          const dbCombo = await ComboPack.findById(prodId);
-          if (dbCombo && dbCombo.returnPolicy) {
-            returnPolicy = dbCombo.returnPolicy;
-          }
-        } else {
-          const dbProd = await Product.findById(prodId);
-          if (dbProd && dbProd.returnPolicy) {
-            returnPolicy = dbProd.returnPolicy;
-          }
-        }
-      } catch (err) {
-        console.error('Error fetching product return policy:', err);
-      }
-
       return {
-        productId: item.productId || item.id || item._id,
-        title: item.title || item.name,
-        price: Number(item.price),
-        quantity: Number(item.quantity || item.qty || 1),
-        image: getRelativeImagePath(item.image || (item.images && item.images[0]) || ''),
+        productId: item.productId,
+        title: item.title,
+        price: item.price,
+        quantity: item.quantity,
+        image: item.image,
         selectedOptions,
-        isComboProduct: Boolean(item.isComboProduct),
-        includedProducts: item.includedProducts || [],
-        weight: Number(item.weight || 0),
-        returnPolicy
+        isComboProduct: item.isComboProduct,
+        includedProducts: item.includedProducts,
+        weight: item.weight,
+        returnPolicy: item.returnPolicy
       };
     }));
 
@@ -157,18 +149,23 @@ exports.createPayment = async (req, res, next) => {
       items: normalizedItems,
       shippingAddress,
       paymentMethod: 'CCAvenue',
-      paymentStatus: 'pending',
-      subtotal: Number(subtotal),
-      gst: Number(gst),
-      shippingFee: Number(shippingFee),
-      couponCode,
-      couponDiscount: Number(couponDiscount),
-      total: Number(total),
+      paymentStatus: 'Pending',
+      subtotal: totals.subtotal,
+      gst: totals.gst,
+      shippingFee: totals.shippingFee,
+      couponCode: totals.couponCode,
+      couponDiscount: totals.couponDiscount,
+      total: totals.total,
       status: initialStatus,
       statusColor: getStatusColor(initialStatus),
       statusDate: new Date(),
-      placedDate: new Date()
+      placedDate: new Date(),
+      reservationExpiresAt: new Date(Date.now() + 15 * 60 * 1000)
     });
+
+    // Save initial audit logs
+    await newOrder.addAuditLog('Order Created', { message: 'Pending order created, awaiting payment redirection' });
+    await newOrder.addAuditLog('Stock Reserved', { message: 'Deducted and reserved stock items', items: reservationItems });
 
     // Create Stock Reservation record
     await StockReservation.create({
@@ -256,14 +253,14 @@ exports.paymentResponse = async (req, res, next) => {
 
     if (orderStatus === 'Success') {
       // Payment Successful
-      order.paymentStatus = 'paid';
+      order.paymentStatus = 'Paid';
       order.status = 'Processing';
       order.statusColor = getStatusColor('Processing');
       order.ccavenueTrackingId = trackingId;
       order.bankRefNo = bankRefNo || '';
       order.paymentResponse = responseObj;
       order.transactionDate = new Date();
-      await order.save();
+      await order.addAuditLog('Gateway Callback Success', { responseObj });
 
       // Set Stock Reservation as paid & processed
       await StockReservation.findOneAndUpdate(
@@ -291,13 +288,13 @@ exports.paymentResponse = async (req, res, next) => {
       return res.redirect(`${frontendUrl}/checkout?orderId=${order._id}`);
     } else {
       // Payment Failed / Cancelled / Aborted
-      order.paymentStatus = 'failed';
+      order.paymentStatus = 'Failed';
       order.status = 'Cancelled';
       order.statusColor = getStatusColor('Cancelled');
       order.ccavenueTrackingId = trackingId || '';
       order.bankRefNo = bankRefNo || '';
       order.paymentResponse = responseObj;
-      await order.save();
+      await order.addAuditLog(`Gateway Callback Failure - ${orderStatus}`, { responseObj });
 
       // Restock items immediately
       const reservation = await StockReservation.findOne({ orderId: order._id, processed: false });
@@ -353,6 +350,10 @@ exports.getPaymentStatus = async (req, res, next) => {
  */
 exports.simulateResponse = async (req, res, next) => {
   try {
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(403).json({ success: false, message: 'Simulation routes are disabled in production' });
+    }
+
     const { orderId, status = 'Success' } = req.query;
     if (!orderId) {
       return res.status(400).send('Missing orderId query parameter');
@@ -376,6 +377,42 @@ exports.simulateResponse = async (req, res, next) => {
     // Call the webhook handler directly
     req.body = { encResp };
     return exports.paymentResponse(req, res, next);
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Update the mockStatus of an order in development/testing mode
+ */
+exports.setMockStatus = async (req, res, next) => {
+  try {
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(403).json({ success: false, message: 'Mock status settings are disabled in production' });
+    }
+
+    const { orderId, status } = req.body;
+    if (!orderId) {
+      return res.status(400).json({ success: false, message: 'Missing orderId' });
+    }
+
+    if (status && !['Success', 'Failure', 'Aborted', 'Pending'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Invalid status. Must be Success, Failure, Aborted, or Pending' });
+    }
+
+    const order = await Order.findOne({ orderId: orderId });
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    order.mockStatus = status || null;
+    await order.save();
+
+    logger.order.info(`Set mockStatus for order ${orderId} to: ${status}`);
+    return res.status(200).json({
+      success: true,
+      message: `Successfully set mockStatus for order ${orderId} to ${status || 'null'}`
+    });
   } catch (err) {
     next(err);
   }

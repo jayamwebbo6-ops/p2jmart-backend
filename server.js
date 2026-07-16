@@ -11,7 +11,12 @@ const app = express();
 // Connect to Database
 connectDB().then(() => {
   const { startStockReservationCron } = require('./src/utils/cron.js');
-  startStockReservationCron();
+  try {
+    startStockReservationCron();
+    console.log('Cron started successfully');
+  } catch (cronErr) {
+    console.error('Cron started failed:', cronErr.message);
+  }
 }).catch((err) => {
   console.error('Failed to connect to database or start cron:', err);
 });
