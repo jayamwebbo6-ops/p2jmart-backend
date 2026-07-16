@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const logger = require('../utils/logger');
 
 const OrderSchema = new mongoose.Schema(
   {
@@ -98,7 +99,6 @@ const OrderSchema = new mongoose.Schema(
     },
     paymentStatus: {
       type: String,
-      enum: ['pending', 'paid', 'failed'],
       default: 'pending'
     },
     subtotal: {
@@ -127,8 +127,7 @@ const OrderSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'],
-      default: 'Processing'
+      default: 'Pending'
     },
     statusColor: {
       type: String,
@@ -138,6 +137,28 @@ const OrderSchema = new mongoose.Schema(
       type: Date,
       default: Date.now
     },
+    reservationExpiresAt: {
+      type: Date
+    },
+    gatewayPendingSince: {
+      type: Date
+    },
+    gatewayPendingExpiry: {
+      type: Date
+    },
+    mockStatus: {
+      type: String,
+      enum: ['Success', 'Failure', 'Aborted', 'Pending', null]
+    },
+    auditLog: [
+      {
+        action: { type: String, required: true },
+        status: { type: String },
+        paymentStatus: { type: String },
+        details: { type: mongoose.Schema.Types.Mixed },
+        timestamp: { type: Date, default: Date.now }
+      }
+    ],
     trackingId: {
       type: String,
       default: ''
@@ -161,6 +182,7 @@ const OrderSchema = new mongoose.Schema(
       type: String,
       default: ""
     },
+    
 
     paymentResponse: {
       type: Object,
@@ -175,5 +197,21 @@ const OrderSchema = new mongoose.Schema(
     timestamps: true
   }
 );
+
+OrderSchema.methods.addAuditLog = async function (action, details = {}) {
+  this.auditLog.push({
+    action,
+    status: this.status,
+    paymentStatus: this.paymentStatus,
+    details,
+    timestamp: new Date()
+  });
+  logger.order.info(`Order ${this.orderId} Audit: ${action}`, {
+    status: this.status,
+    paymentStatus: this.paymentStatus,
+    details
+  });
+  return this.save();
+};
 
 module.exports = mongoose.model('Order', OrderSchema);

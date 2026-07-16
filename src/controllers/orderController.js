@@ -294,6 +294,192 @@ const formatOrderResponse = (order) => {
   return orderObj;
 };
 
+// Recalculates and validates order items, pricing, shipping, GST and coupons on the server side
+const recalculateOrderTotals = async ({ items, shippingAddress, couponCode, userId }) => {
+  const Gst = require('../models/Gst');
+  const Shipping = require('../models/Shipping');
+  const Coupon = require('../models/Coupon');
+  const HomeCMS = require('../models/HomeCMS');
+  const Product = require('../models/Product');
+  const ComboPack = require('../models/ComboPack');
+
+  let subtotal = 0;
+  let recalculatedItems = [];
+
+  for (const item of items) {
+    const prodId = item.productId || item.id || item._id;
+    let truePrice = 0;
+    let trueWeight = 0;
+    let trueTitle = "";
+    let trueImage = "";
+    let returnPolicy = "No Return Policy";
+    let freeShipping = "No";
+    let categoryName = "Catalog";
+
+    if (item.isComboProduct) {
+      const dbCombo = await ComboPack.findById(prodId);
+      if (!dbCombo) {
+        throw new Error(`Combo pack not found for ID: ${prodId}`);
+      }
+      if (dbCombo.status === false) {
+        throw new Error(`Combo pack "${dbCombo.title}" is currently unavailable.`);
+      }
+      truePrice = Number(dbCombo.price);
+      trueWeight = Number(dbCombo.weight || 0);
+      trueTitle = dbCombo.title;
+      trueImage = dbCombo.image || (dbCombo.images && dbCombo.images[0]) || "";
+      if (dbCombo.returnPolicy) {
+        returnPolicy = dbCombo.returnPolicy;
+      }
+      freeShipping = dbCombo.freeShipping || "No";
+      categoryName = "Combo";
+    } else {
+      const dbProd = await Product.findById(prodId).populate('category');
+      if (!dbProd) {
+        throw new Error(`Product not found for ID: ${prodId}`);
+      }
+      if (dbProd.isActive === false) {
+        throw new Error(`Product "${dbProd.title}" is currently unavailable.`);
+      }
+      
+      const variant = findMatchingVariant(dbProd, item.selectedOptions);
+      if (!variant) {
+        throw new Error(`Matching variant not found for product "${dbProd.title}".`);
+      }
+      
+      truePrice = Number(variant.price);
+      trueWeight = Number(variant.weight || dbProd.weight || 0);
+      trueTitle = dbProd.title;
+      trueImage = dbProd.image || (dbProd.images && dbProd.images[0]) || "";
+      if (dbProd.returnPolicy) {
+        returnPolicy = dbProd.returnPolicy;
+      }
+      freeShipping = dbProd.freeShipping || "No";
+      categoryName = dbProd.category?.name || "Catalog";
+    }
+
+    const qty = Number(item.quantity || item.qty || 1);
+    subtotal += truePrice * qty;
+
+    recalculatedItems.push({
+      productId: prodId,
+      title: trueTitle,
+      price: truePrice,
+      quantity: qty,
+      image: getRelativeImagePath(trueImage),
+      selectedOptions: item.selectedOptions || {},
+      isComboProduct: Boolean(item.isComboProduct),
+      includedProducts: item.includedProducts || [],
+      weight: trueWeight,
+      returnPolicy,
+      freeShipping,
+      categoryName
+    });
+  }
+
+  // GST Calculation
+  let gstAmount = 0;
+  const gstRules = await Gst.find({ gstStatus: 'active' }).lean();
+  for (const item of recalculatedItems) {
+    const rule = gstRules.find(g => g.productCategoryName.trim().toLowerCase() === item.categoryName.trim().toLowerCase());
+    const rate = rule ? rule.percentage : 0;
+    gstAmount += (item.price * item.quantity) * (rate / 100);
+  }
+
+  // Shipping Fee Calculation
+  let shippingFee = 0;
+  if (shippingAddress && shippingAddress.state) {
+    const cmsConfig = await HomeCMS.findOne({ key: 'home_cms_config' }).lean();
+    const freeShippingMinAmount = cmsConfig?.freeShippingMinAmount !== undefined ? cmsConfig.freeShippingMinAmount : 1000;
+    const flatShippingCost = cmsConfig?.flatShippingCost !== undefined ? cmsConfig.flatShippingCost : 50;
+
+    const hasNonFreeShippingItem = recalculatedItems.some(item => String(item.freeShipping).trim().toLowerCase() !== 'yes');
+
+    if (hasNonFreeShippingItem) {
+      const nonFreeItems = recalculatedItems.filter(item => String(item.freeShipping).trim().toLowerCase() !== 'yes');
+      const totalWeight = nonFreeItems.reduce((acc, item) => acc + (item.weight * item.quantity), 0);
+      const shippingRules = await Shipping.find().lean();
+      const rule = shippingRules.find(s => s.stateName.trim().toLowerCase() === shippingAddress.state.trim().toLowerCase());
+
+      if (totalWeight === 0) {
+        shippingFee = rule ? (Number(rule.baseCost) || 0) : flatShippingCost;
+      } else if (!rule) {
+        shippingFee = flatShippingCost;
+      } else {
+        const baseCost = Number(rule.baseCost) || 0;
+        const baseWeight = Number(rule.baseWeight) || 0;
+        const additionalCost = Number(rule.additionalCost) || 0;
+        const additionalWeight = Number(rule.additionalWeight) || 1;
+
+        if (totalWeight <= baseWeight) {
+          shippingFee = baseCost;
+        } else {
+          const extraWeight = totalWeight - baseWeight;
+          const extraUnits = Math.ceil(extraWeight / additionalWeight);
+          shippingFee = baseCost + (extraUnits * additionalCost);
+        }
+      }
+    } else {
+      shippingFee = subtotal >= freeShippingMinAmount ? 0 : flatShippingCost;
+    }
+  }
+
+  // Coupon Validation & Calculation
+  let couponDiscount = 0;
+  let validatedCouponCode = null;
+  if (couponCode) {
+    const coupon = await Coupon.findOne({ code: couponCode.toUpperCase().trim() });
+    if (coupon && coupon.status === 'Active') {
+      const currentDateStr = new Date().toISOString().split('T')[0];
+      const isDateValid = currentDateStr >= coupon.validityFrom && currentDateStr <= coupon.validityTo;
+      const isMinAmountMet = subtotal >= coupon.minOrderAmount;
+      
+      let isUsageLimitOk = true;
+      if (userId) {
+        const Order = require('../models/Order');
+        const usageCount = await Order.countDocuments({
+          user: userId,
+          couponCode: coupon.code,
+          status: { $ne: 'Cancelled' }
+        });
+        if (usageCount >= coupon.usageLimitPerUser) {
+          isUsageLimitOk = false;
+        }
+      }
+
+      if (isDateValid && isMinAmountMet && isUsageLimitOk) {
+        validatedCouponCode = coupon.code;
+        if (coupon.discountType === 'Percentage (%)') {
+          couponDiscount = (subtotal * coupon.discountValue) / 100;
+          if (coupon.maxDiscountAmount > 0 && couponDiscount > coupon.maxDiscountAmount) {
+            couponDiscount = coupon.maxDiscountAmount;
+          }
+        } else {
+          couponDiscount = coupon.discountValue;
+        }
+
+        if (couponDiscount > subtotal) {
+          couponDiscount = subtotal;
+        }
+        
+        couponDiscount = Math.round(couponDiscount);
+      }
+    }
+  }
+
+  const total = Math.max(0, subtotal - couponDiscount + gstAmount + shippingFee);
+
+  return {
+    recalculatedItems,
+    subtotal: Math.round(subtotal * 100) / 100,
+    gst: Math.round(gstAmount * 100) / 100,
+    shippingFee: Math.round(shippingFee * 100) / 100,
+    couponCode: validatedCouponCode,
+    couponDiscount,
+    total: Math.round(total * 100) / 100
+  };
+};
+
 // Create a new order
 exports.createOrder = async (req, res, next) => {
   try {
@@ -302,13 +488,8 @@ exports.createOrder = async (req, res, next) => {
       shippingAddress,
       paymentMethod,
       paymentStatus = 'paid',
-      subtotal,
-      gst = 0,
-      shippingFee,
-      total,
       isDirectPurchase = false,
-      couponCode = null,
-      couponDiscount = 0
+      couponCode = null
     } = req.body;
 
     logger.checkout.info('Order creation initiated', {
@@ -317,7 +498,6 @@ exports.createOrder = async (req, res, next) => {
       paymentMethod,
       paymentStatus,
       isDirectPurchase,
-      total,
       couponCode: couponCode || 'none'
     });
 
@@ -331,12 +511,26 @@ exports.createOrder = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Invalid shipping address details' });
     }
 
+    // Server-side recalculation and validation
+    let totals;
+    try {
+      totals = await recalculateOrderTotals({
+        items,
+        shippingAddress,
+        couponCode,
+        userId: req.user._id
+      });
+    } catch (calcError) {
+      logger.checkout.error('Order rejected – calculation validation failed', { userId: req.user._id, reason: calcError.message });
+      return res.status(400).json({ success: false, message: calcError.message });
+    }
+
     // Generate unique order ID
     const randomNum = Math.floor(100000 + Math.random() * 900000);
     const orderId = `ORD-${Date.now().toString().slice(-4)}-${randomNum}`;
 
     // Normalize items
-    const normalizedItems = await Promise.all(items.map(async (item) => {
+    const normalizedItems = await Promise.all(totals.recalculatedItems.map(async (item) => {
       const selectedOptions = { ...item.selectedOptions };
       if (selectedOptions.customImage) {
         selectedOptions.customImage = await saveBase64ImageAsync(selectedOptions.customImage, 'customization', 'custom-img');
@@ -348,35 +542,17 @@ exports.createOrder = async (req, res, next) => {
         }
       }
 
-      let returnPolicy = 'No Return Policy';
-      try {
-        const prodId = item.productId || item.id || item._id;
-        if (item.isComboProduct) {
-          const dbCombo = await ComboPack.findById(prodId);
-          if (dbCombo && dbCombo.returnPolicy) {
-            returnPolicy = dbCombo.returnPolicy;
-          }
-        } else {
-          const dbProd = await Product.findById(prodId);
-          if (dbProd && dbProd.returnPolicy) {
-            returnPolicy = dbProd.returnPolicy;
-          }
-        }
-      } catch (err) {
-        console.error('Error fetching product return policy:', err);
-      }
-
       return {
-        productId: item.productId || item.id || item._id,
-        title: item.title || item.name,
-        price: Number(item.price),
-        quantity: Number(item.quantity || item.qty || 1),
-        image: getRelativeImagePath(item.image || (item.images && item.images[0]) || ''),
+        productId: item.productId,
+        title: item.title,
+        price: item.price,
+        quantity: item.quantity,
+        image: item.image,
         selectedOptions,
-        isComboProduct: Boolean(item.isComboProduct),
-        includedProducts: item.includedProducts || [],
-        weight: Number(item.weight || 0),
-        returnPolicy
+        isComboProduct: item.isComboProduct,
+        includedProducts: item.includedProducts,
+        weight: item.weight,
+        returnPolicy: item.returnPolicy
       };
     }));
 
@@ -399,12 +575,12 @@ exports.createOrder = async (req, res, next) => {
       shippingAddress,
       paymentMethod,
       paymentStatus,
-      subtotal: Number(subtotal),
-      gst: Number(gst),
-      shippingFee: Number(shippingFee),
-      couponCode,
-      couponDiscount: Number(couponDiscount),
-      total: Number(total),
+      subtotal: totals.subtotal,
+      gst: totals.gst,
+      shippingFee: totals.shippingFee,
+      couponCode: totals.couponCode,
+      couponDiscount: totals.couponDiscount,
+      total: totals.total,
       status: initialStatus,
       statusColor: getStatusColor(initialStatus),
       statusDate: new Date(),
@@ -431,14 +607,14 @@ exports.createOrder = async (req, res, next) => {
       userId: req.user._id,
       paymentMethod,
       paymentStatus,
-      subtotal,
-      total,
-      couponCode: couponCode || 'none',
-      couponDiscount,
+      subtotal: totals.subtotal,
+      total: totals.total,
+      couponCode: totals.couponCode || 'none',
+      couponDiscount: totals.couponDiscount,
       isDirectPurchase,
       itemCount: normalizedItems.length
     });
-    logger.checkout.info('Checkout flow completed', { orderId: newOrder.orderId, userId: req.user._id, total });
+    logger.checkout.info('Checkout flow completed', { orderId: newOrder.orderId, userId: req.user._id, total: totals.total });
 
     // Clear user cart if not direct buy
     if (!isDirectPurchase) {
@@ -662,6 +838,7 @@ exports.updateOrderStatus = async (req, res, next) => {
 
     const allowedTransitions = {
       'Pending': ['Pending', 'Processing'],
+      'Confirmed': ['Processing', 'Shipped'],
       'Processing': ['Processing', 'Shipped'],
       'Shipped': ['Shipped', 'Delivered'],
       'Delivered': ['Delivered'],
@@ -927,4 +1104,74 @@ exports.adminRefundItem = async (req, res, next) => {
   }
 };
 
+// Admin: Get all orders requiring refund (paymentStatus: 'Paid - Refund Required')
+exports.getOrdersRequiringRefund = async (req, res, next) => {
+  try {
+    const orders = await Order.find({ paymentStatus: 'Paid - Refund Required' })
+      .populate('user', 'name email phone')
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      data: orders.map(formatOrderResponse)
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Admin: Initiate refund for order
+exports.adminInitiateOrderRefund = async (req, res, next) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    if (order.paymentStatus === 'Refunded') {
+      return res.status(400).json({ success: false, message: 'Refund already completed' });
+    }
+
+    order.paymentStatus = 'Refund Pending';
+    order.status = 'Refund Pending';
+    order.statusColor = 'text-orange-600 bg-orange-50';
+    order.statusDate = new Date();
+    await order.addAuditLog('Refund Initiated by Admin', { notes: req.body.notes || 'Initiated via Admin panel' });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Refund initiated successfully',
+      data: formatOrderResponse(order)
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Admin: Complete refund for order
+exports.adminCompleteOrderRefund = async (req, res, next) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    order.paymentStatus = 'Refunded';
+    order.status = 'Cancelled';
+    order.statusColor = 'text-red-600 bg-red-50';
+    order.statusDate = new Date();
+    await order.addAuditLog('Refund Completed by Admin', { notes: req.body.notes || 'Refund marked as completed in Admin panel' });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Refund marked as completed successfully',
+      data: formatOrderResponse(order)
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 exports.validateAndDeductStock = validateAndDeductStock;
+exports.recalculateOrderTotals = recalculateOrderTotals;
