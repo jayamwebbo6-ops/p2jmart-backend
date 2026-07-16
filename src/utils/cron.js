@@ -247,7 +247,7 @@ const processExpiredReservations = async () => {
         if (gatewayStatus === 'Success') {
           order.paymentStatus = 'Paid';
           order.status = 'Processing';
-          order.statusColor = 'text-blue-600 bg-blue-50';
+          order.statusColor = 'text-yellow-600 bg-yellow-50';
           order.statusDate = new Date();
           order.ccavenueTrackingId = apiResponse.tracking_id || '';
           order.bankRefNo = apiResponse.bank_ref_no || '';
@@ -336,7 +336,7 @@ const handleDelayedPaymentConfirmation = async (order, apiResponse) => {
     // Stock is available
     order.paymentStatus = 'Paid';
     order.status = 'Processing';
-    order.statusColor = 'text-blue-600 bg-blue-50';
+    order.statusColor = 'text-yellow-600 bg-yellow-50';
     order.statusDate = new Date();
     order.ccavenueTrackingId = apiResponse.tracking_id || '';
     order.bankRefNo = apiResponse.bank_ref_no || '';
