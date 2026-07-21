@@ -8,47 +8,92 @@ const { sendEmail } = require('../utils/emailHelper');
 const User = require('../models/User');
 const { getOrderConfirmationTemplate, getCancellationTemplate } = require('../utils/emailTemplate');
 const logger = require('../utils/logger');
+const mongoose = require('mongoose');
 
-// Helper to atomically deduct stock for a specific variant in a product
+// Helper to atomically deduct stock for a specific variant in a product (handles mixed string/ObjectId types)
 const attemptAtomicDeduction = async (productId, variant, quantity) => {
+  const db = mongoose.connection.db;
+  const collection = db.collection('products');
+
+  const variantIdStr = variant._id ? String(variant._id) : '';
+  const variantIdObj = variant._id && mongoose.Types.ObjectId.isValid(variant._id) ? new mongoose.Types.ObjectId(variant._id) : null;
+  const variantId = variant.id || '';
+
   const query = {
-    _id: productId,
+    _id: new mongoose.Types.ObjectId(productId),
     variants: {
       $elemMatch: {
-        stock: { $gte: quantity }
+        stock: { $gte: quantity },
+        $or: [
+          ...(variantIdStr ? [{ _id: variantIdStr }] : []),
+          ...(variantIdObj ? [{ _id: variantIdObj }] : []),
+          ...(variantId ? [{ id: variantId }] : [])
+        ]
       }
     }
   };
-
-  if (variant._id) {
-    query.variants.$elemMatch._id = variant._id;
-  } else if (variant.id) {
-    query.variants.$elemMatch.id = variant.id;
-  } else {
-    throw new Error('Variant identification is missing.');
-  }
 
   const update = {
     $inc: { "variants.$[elem].stock": -quantity }
   };
 
-  const arrayFilters = [];
-  if (variant._id) {
-    arrayFilters.push({ "elem._id": variant._id });
-  } else {
-    arrayFilters.push({ "elem.id": variant.id });
-  }
+  const arrayFilters = [
+    {
+      $or: [
+        ...(variantIdStr ? [{ "elem._id": variantIdStr }] : []),
+        ...(variantIdObj ? [{ "elem._id": variantIdObj }] : []),
+        ...(variantId ? [{ "elem.id": variantId }] : [])
+      ]
+    }
+  ];
 
-  const updatedProduct = await Product.findOneAndUpdate(
+  const result = await collection.findOneAndUpdate(
     query,
     update,
     {
       arrayFilters,
-      new: true
+      returnDocument: 'after'
     }
   );
 
-  return updatedProduct;
+  if (!result) return null;
+  return result.value !== undefined ? result.value : result;
+};
+
+// Helper to increment stock for a specific variant in a product (handles mixed string/ObjectId types)
+const incrementVariantStock = async (productId, variant, quantity) => {
+  const db = mongoose.connection.db;
+  const collection = db.collection('products');
+
+  let variantIdStr = '';
+  let variantIdObj = null;
+  let variantId = '';
+
+  if (variant && typeof variant === 'object') {
+    variantIdStr = variant._id ? String(variant._id) : '';
+    variantIdObj = variant._id && mongoose.Types.ObjectId.isValid(variant._id) ? new mongoose.Types.ObjectId(variant._id) : null;
+    variantId = variant.id || '';
+  } else if (variant) {
+    variantIdStr = String(variant);
+    variantIdObj = mongoose.Types.ObjectId.isValid(variant) ? new mongoose.Types.ObjectId(variant) : null;
+    variantId = String(variant);
+  }
+
+  const arrayFilters = [
+    {
+      $or: [
+        ...(variantIdStr ? [{ "elem._id": variantIdStr }] : []),
+        ...(variantIdObj ? [{ "elem._id": variantIdObj }] : []),
+        ...(variantId ? [{ "elem.id": variantId }] : [])
+      ]
+    }
+  ];
+
+  await collection.updateOne(
+    { _id: new mongoose.Types.ObjectId(productId) },
+    { $inc: { "variants.$[elem].stock": quantity } },
+    { arrayFilters }
+  );
 };
 
 // Helper to find matching variant based on selectedOptions
@@ -108,6 +153,8 @@ const getStatusColor = (status) => {
       return 'text-purple-600 bg-purple-50';
     case 'Awaiting Gateway Confirmation':
       return 'text-indigo-600 bg-indigo-50';
+    case 'Cancellation Rejected':
+      return 'text-rose-600 bg-rose-50';
     default:
       return 'text-gray-600 bg-gray-50';
   }
@@ -197,12 +244,12 @@ const recalculateOrderTotals = async ({ items, shippingAddress, couponCode, user
       if (dbProd.isActive === false) {
         throw new Error(`Product "${dbProd.title}" is currently unavailable.`);
       }
-      
+
       const variant = findMatchingVariant(dbProd, item.selectedOptions);
       if (!variant) {
         throw new Error(`Matching variant not found for product "${dbProd.title}".`);
       }
-      
+
       truePrice = Number(variant.price);
       trueWeight = Number(variant.weight || dbProd.weight || 0);
       trueTitle = dbProd.title;
@@ -289,7 +336,7 @@ const recalculateOrderTotals = async ({ items, shippingAddress, couponCode, user
       const currentDateStr = new Date().toISOString().split('T')[0];
       const isDateValid = currentDateStr >= coupon.validityFrom && currentDateStr <= coupon.validityTo;
       const isMinAmountMet = subtotal >= coupon.minOrderAmount;
-      
+
       let isUsageLimitOk = true;
       if (userId) {
         const Order = require('../models/Order');
@@ -317,7 +364,7 @@ const recalculateOrderTotals = async ({ items, shippingAddress, couponCode, user
         if (couponDiscount > subtotal) {
           couponDiscount = subtotal;
         }
-        
+
         couponDiscount = Math.round(couponDiscount);
       }
     }
@@ -669,11 +716,54 @@ exports.getAdminReturnRequests = async (req, res, next) => {
   }
 };
 
+const restoreOrderStock = async (order) => {
+  for (const item of order.items) {
+    try {
+      const quantityToRestore = Number(item.quantity) || 1;
+
+      if (item.isComboProduct) {
+        let combo = null;
+        if (item.productId && /^[0-9a-fA-F]{24}$/.test(item.productId)) {
+          combo = await ComboPack.findById(item.productId);
+        }
+        if (combo && combo.selectedVariants && combo.selectedVariants.length > 0) {
+          for (const sv of combo.selectedVariants) {
+            await incrementVariantStock(sv.productId, sv.variantId, quantityToRestore);
+            logger.stock.info(`Restored stock for combo component`, { productId: sv.productId, variantId: sv.variantId, quantity: quantityToRestore });
+          }
+        } else {
+          const included = item.includedProducts || [];
+          for (const subItem of included) {
+            const subId = subItem.productId || subItem.id || subItem._id;
+            const prod = await Product.findById(subId);
+            if (!prod || !prod.variants || prod.variants.length === 0) continue;
+
+            const variantId = prod.variants[0]._id || prod.variants[0].id;
+            await incrementVariantStock(prod._id, variantId, quantityToRestore);
+            logger.stock.info(`Restored stock for custom combo component`, { productId: prod._id, quantity: quantityToRestore });
+          }
+        }
+      } else {
+        const prod = await Product.findById(item.productId);
+        if (prod) {
+          const variant = findMatchingVariant(prod, item.selectedOptions);
+          if (variant) {
+            await incrementVariantStock(prod._id, variant, quantityToRestore);
+            logger.stock.info(`Restored stock for standard product`, { productId: prod._id, variantId: variant._id || variant.id, quantity: quantityToRestore });
+          }
+        }
+      }
+    } catch (stockRestoreErr) {
+      logger.stock.error(`Failed to restock item during order cancellation`, { orderId: order._id, itemId: item._id, error: stockRestoreErr.message });
+    }
+  }
+};
+
 // Update order status (Admin only - handles approval and emails)
 exports.updateOrderStatus = async (req, res, next) => {
   try {
     const { status } = req.body;
-    if (!['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancellation Requested', 'Cancelled'].includes(status)) {
+    if (!['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancellation Requested', 'Cancelled', 'Cancellation Rejected'].includes(status)) {
       return res.status(400).json({
         success: false,
         message: 'Invalid order status'
@@ -708,7 +798,8 @@ exports.updateOrderStatus = async (req, res, next) => {
       'Processing': ['Processing', 'Shipped', 'Cancelled'],
       'Shipped': ['Shipped', 'Delivered'],
       'Delivered': ['Delivered'],
-      'Cancellation Requested': ['Cancellation Requested', 'Cancelled', 'Processing'],
+      'Cancellation Requested': ['Cancellation Requested', 'Cancelled', 'Cancellation Rejected', 'Processing'],
+      'Cancellation Rejected': ['Cancellation Rejected', 'Processing', 'Shipped', 'Cancelled'],
       'Cancelled': ['Cancelled']
     };
 
@@ -734,11 +825,16 @@ exports.updateOrderStatus = async (req, res, next) => {
     order.status = status;
     order.statusColor = getStatusColor(status) || (status === 'Cancelled' ? 'text-red-600 bg-red-50' : 'text-gray-600 bg-gray-50');
     order.statusDate = new Date();
-    
+
     if (status === 'Delivered') {
       order.deliveredAt = new Date();
     }
-    
+
+    // If admin approves the cancellation, restore stock
+    if (status === 'Cancelled') {
+      await restoreOrderStock(order);
+    }
+
     await order.save();
 
     // If admin approves the cancellation, trigger email helper
@@ -846,8 +942,8 @@ exports.getAdminCancellationRequests = async (req, res, next) => {
     const orders = await Order.find({
       status: { $in: ['Cancellation Requested', 'Cancelled', 'Cancellation Rejected'] }
     })
-    .populate('user', 'name email phone')
-    .sort({ updatedAt: -1 });
+      .populate('user', 'name email phone')
+      .sort({ updatedAt: -1 });
 
     return res.status(200).json({
       success: true,
@@ -864,7 +960,7 @@ exports.reviewCancellationRequest = async (req, res, next) => {
     const { id } = req.params;
     const { status } = req.body; // Evaluates to 'Cancelled' or 'Cancellation Rejected'
 
-    const order = await Order.findById(id);
+    const order = await Order.findById(id).populate('user');
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order details not found.' });
     }
@@ -876,13 +972,27 @@ exports.reviewCancellationRequest = async (req, res, next) => {
 
     if (status === 'Cancelled') {
       order.status = 'Cancelled';
-      
-      // OPTIONAL: If you track stock levels, restore item stock allocations here
-      // order.items.forEach(item => { ... });
+      order.statusColor = getStatusColor('Cancelled');
+      order.statusDate = new Date();
+      await restoreOrderStock(order);
+
+      // Send Email
+      if (order.user && order.user.email) {
+        try {
+          const htmlContent = getCancellationTemplate(order);
+          await sendEmail({
+            to: order.user.email,
+            subject: `Order Cancelled Confirmation - P2J Mart`,
+            html: htmlContent
+          });
+        } catch (emailErr) {
+          logger.error(`Failed to send cancellation email for order ${order._id}: ${emailErr.message}`);
+        }
+      }
     } else {
-      // Rejection branch: Revert the status back to an acceptable operational state
-      // Adjust 'Processing' if your default active status tracking is named differently (e.g., 'Placed')
-      order.status = 'Processing'; 
+      order.status = 'Cancellation Rejected';
+      order.statusColor = getStatusColor('Cancellation Rejected');
+      order.statusDate = new Date();
     }
 
     await order.save();
@@ -890,7 +1000,7 @@ exports.reviewCancellationRequest = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       message: `Cancellation successfully updated to status: ${order.status}`,
-      data: order
+      data: formatOrderResponse(order)
     });
   } catch (err) {
     next(err);
@@ -1002,11 +1112,7 @@ exports.adminRefundItem = async (req, res, next) => {
         if (combo && combo.selectedVariants && combo.selectedVariants.length > 0) {
           // Restore stock for mapped static combo components
           for (const sv of combo.selectedVariants) {
-            await Product.updateOne(
-              { _id: sv.productId },
-              { $inc: { "variants.$[elem].stock": quantityToRestore } },
-              { arrayFilters: [{ $or: [{ "elem.id": sv.variantId }, { "elem._id": sv.variantId }] }] }
-            );
+            await incrementVariantStock(sv.productId, sv.variantId, quantityToRestore);
             logger.stock.info(`Refund stock restoration complete for combo component`, { productId: sv.productId, variantId: sv.variantId, quantity: quantityToRestore });
           }
         } else {
@@ -1016,13 +1122,9 @@ exports.adminRefundItem = async (req, res, next) => {
             const subId = subItem.productId || subItem.id || subItem._id;
             const prod = await Product.findById(subId);
             if (!prod || !prod.variants || prod.variants.length === 0) continue;
-            
+
             const variantId = prod.variants[0]._id || prod.variants[0].id;
-            await Product.updateOne(
-              { _id: prod._id },
-              { $inc: { "variants.$[elem].stock": quantityToRestore } },
-              { arrayFilters: [{ $or: [{ "elem.id": variantId }, { "elem._id": variantId }] }] }
-            );
+            await incrementVariantStock(prod._id, variantId, quantityToRestore);
             logger.stock.info(`Refund stock restoration complete for custom combo component`, { productId: prod._id, quantity: quantityToRestore });
           }
         }
@@ -1032,13 +1134,8 @@ exports.adminRefundItem = async (req, res, next) => {
         if (prod) {
           const variant = findMatchingVariant(prod, item.selectedOptions);
           if (variant) {
-            const variantId = variant._id || variant.id;
-            await Product.updateOne(
-              { _id: prod._id },
-              { $inc: { "variants.$[elem].stock": quantityToRestore } },
-              { arrayFilters: [{ $or: [{ "elem.id": variantId }, { "elem._id": variantId }] }] }
-            );
-            logger.stock.info(`Refund stock restoration complete for standard product`, { productId: prod._id, variantId, quantity: quantityToRestore });
+            await incrementVariantStock(prod._id, variant, quantityToRestore);
+            logger.stock.info(`Refund stock restoration complete for standard product`, { productId: prod._id, variantId: variant._id || variant.id, quantity: quantityToRestore });
           }
         }
       }
@@ -1190,21 +1287,7 @@ const validateAndDeductStock = async (items) => {
     logger.stock.warn(`Error during stock allocation – triggering rollback for ${successfullyDeducted.length} items. Reason: ${error.message}`);
     for (const roll of successfullyDeducted) {
       try {
-        const update = {
-          $inc: { "variants.$[elem].stock": roll.quantity }
-        };
-        const arrayFilters = [];
-        if (roll.variant._id) {
-          arrayFilters.push({ "elem._id": roll.variant._id });
-        } else {
-          arrayFilters.push({ "elem.id": roll.variant.id });
-        }
-
-        await Product.updateOne(
-          { _id: roll.productId },
-          update,
-          { arrayFilters }
-        );
+        await incrementVariantStock(roll.productId, roll.variant, roll.quantity);
         logger.stock.info(`Rollback complete for product: ${roll.productId}, variant: ${roll.variant.id || roll.variant._id}`);
       } catch (rollbackErr) {
         logger.stock.error(`Critical: Failed to roll back stock for product ${roll.productId}, variant ${roll.variant.id || roll.variant._id}`, { error: rollbackErr.message });
