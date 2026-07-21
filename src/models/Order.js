@@ -127,12 +127,9 @@ const OrderSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-<<<<<<< HEAD
      enum: ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancellation Requested', 'Cancelled', 'Cancellation Rejected'],
-      default: 'Processing'
-=======
+      default: 'Processing',
       default: 'Pending'
->>>>>>> e12560289fca2acce2f6e0542904ab1245ea1b78
     },
     cancellationReason: {
       type: String,
@@ -207,9 +204,6 @@ const OrderSchema = new mongoose.Schema(
   }
 );
 
-<<<<<<< HEAD
-module.exports = mongoose.model('Order', OrderSchema);
-=======
 OrderSchema.methods.addAuditLog = async function (action, details = {}) {
   this.auditLog.push({
     action,
@@ -227,4 +221,3 @@ OrderSchema.methods.addAuditLog = async function (action, details = {}) {
 };
 
 module.exports = mongoose.model('Order', OrderSchema);
->>>>>>> e12560289fca2acce2f6e0542904ab1245ea1b78

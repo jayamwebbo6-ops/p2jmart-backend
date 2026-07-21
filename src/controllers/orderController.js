@@ -84,11 +84,12 @@ const findMatchingVariant = (product, selectedOptions = {}) => {
 
 
 
-// Helper to map status to colors
 const getStatusColor = (status) => {
   switch (status) {
     case 'Pending':
       return 'text-amber-600 bg-amber-50';
+    case 'Confirmed':
+      return 'text-green-600 bg-green-50';
     case 'Processing':
       return 'text-yellow-600 bg-yellow-50';
     case 'Shipped':
@@ -97,6 +98,16 @@ const getStatusColor = (status) => {
       return 'text-green-600 bg-green-50';
     case 'Cancelled':
       return 'text-red-600 bg-red-50';
+    case 'Cancellation Requested':
+      return 'text-orange-600 bg-orange-50';
+    case 'Refund Pending':
+      return 'text-orange-600 bg-orange-50';
+    case 'Refund Required':
+      return 'text-rose-600 bg-rose-50';
+    case 'Refunded':
+      return 'text-purple-600 bg-purple-50';
+    case 'Awaiting Gateway Confirmation':
+      return 'text-indigo-600 bg-indigo-50';
     default:
       return 'text-gray-600 bg-gray-50';
   }
@@ -692,17 +703,12 @@ exports.updateOrderStatus = async (req, res, next) => {
     }
 
     const allowedTransitions = {
-<<<<<<< HEAD
       'Pending': ['Pending', 'Processing', 'Cancelled'],
-      'Processing': ['Processing', 'Shipped', 'Cancelled'],
-=======
-      'Pending': ['Pending', 'Processing'],
       'Confirmed': ['Processing', 'Shipped'],
-      'Processing': ['Processing', 'Shipped'],
->>>>>>> e12560289fca2acce2f6e0542904ab1245ea1b78
+      'Processing': ['Processing', 'Shipped', 'Cancelled'],
       'Shipped': ['Shipped', 'Delivered'],
       'Delivered': ['Delivered'],
-      'Cancellation Requested': ['Cancellation Requested', 'Cancelled'],
+      'Cancellation Requested': ['Cancellation Requested', 'Cancelled', 'Processing'],
       'Cancelled': ['Cancelled']
     };
 
@@ -1051,9 +1057,8 @@ exports.adminRefundItem = async (req, res, next) => {
   }
 };
 
-<<<<<<< HEAD
 
-exports.validateAndDeductStock = async (items) => {
+const validateAndDeductStock = async (items) => {
   const reservationItems = []; // stores { productId, variantId, quantity, title }
   const successfullyDeducted = []; // tracks { productId, variant, quantity } for compensating transaction (rollback)
 
@@ -1208,7 +1213,7 @@ exports.validateAndDeductStock = async (items) => {
     throw error;
   }
 };
-=======
+
 // Admin: Get all orders requiring refund (paymentStatus: 'Paid - Refund Required')
 exports.getOrdersRequiringRefund = async (req, res, next) => {
   try {
@@ -1280,4 +1285,3 @@ exports.adminCompleteOrderRefund = async (req, res, next) => {
 
 exports.validateAndDeductStock = validateAndDeductStock;
 exports.recalculateOrderTotals = recalculateOrderTotals;
->>>>>>> e12560289fca2acce2f6e0542904ab1245ea1b78
