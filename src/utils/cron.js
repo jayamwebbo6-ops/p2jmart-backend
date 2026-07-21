@@ -8,6 +8,7 @@ const logger = require('./logger');
 const ccavenueApi = require('./ccavenueApi');
 const { getOrderConfirmationTemplate } = require('./emailTemplate');
 const { sendEmail } = require('./emailHelper');
+const mongoose = require('mongoose');
 
 // Helper to find matching variant based on selectedOptions
 const findMatchingVariant = (product, selectedOptions = {}) => {
@@ -41,41 +42,87 @@ const findMatchingVariant = (product, selectedOptions = {}) => {
 
 // Helper to atomically deduct stock for a specific variant in a product
 const attemptAtomicDeduction = async (productId, variant, quantity) => {
+  const db = mongoose.connection.db;
+  const collection = db.collection('products');
+
+  const variantIdStr = variant._id ? String(variant._id) : '';
+  const variantIdObj = variant._id && mongoose.Types.ObjectId.isValid(variant._id) ? new mongoose.Types.ObjectId(variant._id) : null;
+  const variantId = variant.id || '';
+
   const query = {
-    _id: productId,
+    _id: new mongoose.Types.ObjectId(productId),
     variants: {
       $elemMatch: {
-        stock: { $gte: quantity }
+        stock: { $gte: quantity },
+        $or: [
+          ...(variantIdStr ? [{ _id: variantIdStr }] : []),
+          ...(variantIdObj ? [{ _id: variantIdObj }] : []),
+          ...(variantId ? [{ id: variantId }] : [])
+        ]
       }
     }
   };
-
-  if (variant._id) {
-    query.variants.$elemMatch._id = variant._id;
-  } else if (variant.id) {
-    query.variants.$elemMatch.id = variant.id;
-  } else {
-    throw new Error('Variant identification is missing.');
-  }
 
   const update = {
     $inc: { "variants.$[elem].stock": -quantity }
   };
 
-  const arrayFilters = [];
-  if (variant._id) {
-    arrayFilters.push({ "elem._id": variant._id });
-  } else {
-    arrayFilters.push({ "elem.id": variant.id });
-  }
+  const arrayFilters = [
+    {
+      $or: [
+        ...(variantIdStr ? [{ "elem._id": variantIdStr }] : []),
+        ...(variantIdObj ? [{ "elem._id": variantIdObj }] : []),
+        ...(variantId ? [{ "elem.id": variantId }] : [])
+      ]
+    }
+  ];
 
-  return await Product.findOneAndUpdate(
+  const result = await collection.findOneAndUpdate(
     query,
     update,
     {
       arrayFilters,
-      new: true
+      returnDocument: 'after'
     }
+  );
+
+  if (!result) return null;
+  return result.value !== undefined ? result.value : result;
+};
+
+// Helper to increment stock for a specific variant in a product (handles mixed string/ObjectId types)
+const incrementVariantStock = async (productId, variant, quantity) => {
+  const db = mongoose.connection.db;
+  const collection = db.collection('products');
+
+  let variantIdStr = '';
+  let variantIdObj = null;
+  let variantId = '';
+
+  if (variant && typeof variant === 'object') {
+    variantIdStr = variant._id ? String(variant._id) : '';
+    variantIdObj = variant._id && mongoose.Types.ObjectId.isValid(variant._id) ? new mongoose.Types.ObjectId(variant._id) : null;
+    variantId = variant.id || '';
+  } else if (variant) {
+    variantIdStr = String(variant);
+    variantIdObj = mongoose.Types.ObjectId.isValid(variant) ? new mongoose.Types.ObjectId(variant) : null;
+    variantId = String(variant);
+  }
+
+  const arrayFilters = [
+    {
+      $or: [
+        ...(variantIdStr ? [{ "elem._id": variantIdStr }] : []),
+        ...(variantIdObj ? [{ "elem._id": variantIdObj }] : []),
+        ...(variantId ? [{ "elem.id": variantId }] : [])
+      ]
+    }
+  ];
+
+  await collection.updateOne(
+    { _id: new mongoose.Types.ObjectId(productId) },
+    { $inc: { "variants.$[elem].stock": quantity } },
+    { arrayFilters }
   );
 };
 
@@ -149,21 +196,7 @@ const attemptRededuction = async (order) => {
     logger.stock.warn(`Rededuction failed for order ${order.orderId}, rolling back. Reason: ${error.message}`);
     for (const roll of successfullyDeducted) {
       try {
-        const update = {
-          $inc: { "variants.$[elem].stock": roll.quantity }
-        };
-        const arrayFilters = [];
-        if (roll.variant._id) {
-          arrayFilters.push({ "elem._id": roll.variant._id });
-        } else {
-          arrayFilters.push({ "elem.id": roll.variant.id });
-        }
-
-        await Product.updateOne(
-          { _id: roll.productId },
-          update,
-          { arrayFilters }
-        );
+        await incrementVariantStock(roll.productId, roll.variant, roll.quantity);
       } catch (rollErr) {
         logger.stock.error(`Failed to rollback rededuction item`, { productId: roll.productId, error: rollErr.message });
       }
